@@ -1,0 +1,49 @@
+# Build output
+/build/
+**/build/
+*.o
+*.d
+*.elf
+*.map
+*.bin
+*.hex
+*.img
+*.log
+
+# ESP-IDF generated config
+sdkconfig
+sdkconfig.old
+sdkconfig.ci*
+
+# IDE / Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*.user
+*.code-workspace
+
+# Python virtualenv / cache
+.venv/
+env/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# CMake cache
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.cmake
+
+# Generated flash images
+*.bin
+*.bin.S
+*.bin.gz
+
+# Other temporary files
+*.bak
+*.tmp
+*.DS_Store
+Thumbs.db
