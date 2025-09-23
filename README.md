@@ -11,11 +11,11 @@ This project reads soil moisture levels using a capacitive moisture sensor conne
 - USB-C cable
 
 ## 🔌 Wiring
-| Sensor Pin | ESP32-C6 Pin |
-|------------|--------------|
-| VCC        | 3.3V         |
-| GND        | GND          |
-| AOUT       | GPIO5 (ADC)  |
+| Sensor Pin | ESP32-C6 Pin | ESP32 Lolin Lite   |
+| ---------- | ------------ | ------------------ |
+| VCC        | 3.3V         | 3.3V               |
+| GND        | GND          | GND                |
+| AOUT       | GPIO5 (ADC)  | GPIO36 (5, ADC1_0) |
 
 > ⚠️ Note: Ensure the sensor operates at 3.3V to avoid damaging the ESP32-C6.
 
@@ -23,9 +23,27 @@ This project reads soil moisture levels using a capacitive moisture sensor conne
 - ESP-IDF installed and configured
 - CMake-based project structure
 
-## 📄 Code Snippet
+### ESP32 Lolin Lite ESP-IPF Configuration
 
-```c
+| What                        | Comment                             |
+| --------------------------- | ----------------------------------- |
+| Set Espressif Device Target | ESP32, Custom Board, default config |
+| Set Port to Use             | Select COM Port                     |
+
+
+
+## 📦 Build & Flash
+
+`CTRL + SHIFT + P` > Build, Flash and Monitor
+
+
+---
+
+## Example
+
+### 📄 Code Snippet
+
+```
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -47,24 +65,17 @@ void app_main(void) {
 }
 ```
 
-## 📦 Build & Flash
 
-```bash
-idf.py build
-idf.py -p /dev/ttyUSB0 flash monitor
-```
-
-## 📊 Output Example
+### 📊 Output Example
 
 ```
 I (1000) MoistureSensor: Moisture Level: 42.75%
 I (2000) MoistureSensor: Moisture Level: 43.10%
 ```
 
-## 🧪 Calibration Tips
-- Insert the sensor into dry soil and note the ADC value.
-- Repeat with wet soil.
-- Adjust the conversion formula accordingly.
+
+
+---
 
 ## 📚 References
 - [ESP32 Soil Moisture Tutorial](https://esp32io.com/tutorials/esp32-soil-moisture-sensor)
