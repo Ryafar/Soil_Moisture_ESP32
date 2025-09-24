@@ -4,7 +4,9 @@
  */
 
 #include "soil_monitor_app.h"
+#include "../config/esp32-config.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -13,6 +15,24 @@ static const char* TAG = "SOIL_MONITOR_APP";
 
 // Task handle for the monitoring task
 static TaskHandle_t monitoring_task_handle = NULL;
+
+// WiFi status callback
+static void wifi_status_callback(wifi_status_t status, const char* ip_addr) {
+    switch (status) {
+        case WIFI_STATUS_CONNECTED:
+            ESP_LOGI(TAG, "WiFi Connected! IP: %s", ip_addr);
+            break;
+        case WIFI_STATUS_DISCONNECTED:
+            ESP_LOGI(TAG, "WiFi Disconnected");
+            break;
+        case WIFI_STATUS_CONNECTING:
+            ESP_LOGI(TAG, "WiFi Connecting...");
+            break;
+        case WIFI_STATUS_ERROR:
+            ESP_LOGE(TAG, "WiFi Connection Error");
+            break;
+    }
+}
 
 /**
  * @brief Soil monitoring task
@@ -29,6 +49,18 @@ static void soil_monitoring_task(void* pvParameters) {
             if (app->config.enable_logging) {
                 ESP_LOGI(TAG, "Soil Moisture: %.1f%% | Voltage: %.3fV | Raw ADC: %d",
                          reading.moisture_percent, reading.voltage, reading.raw_adc);
+            }
+            
+            // Send data via HTTP if enabled and WiFi is connected
+            if (app->config.enable_http_sending && wifi_manager_is_connected()) {
+                http_response_status_t http_status = http_client_send_soil_data(&reading, app->config.device_id);
+                if (http_status == HTTP_RESPONSE_OK) {
+                    if (app->config.enable_logging) {
+                        ESP_LOGI(TAG, "Data sent successfully to server");
+                    }
+                } else {
+                    ESP_LOGW(TAG, "Failed to send data to server (status: %d)", http_status);
+                }
             }
         } else {
             ESP_LOGE(TAG, "Failed to read sensor: %s", esp_err_to_name(ret));
@@ -53,6 +85,14 @@ void soil_monitor_get_default_config(soil_monitor_config_t* config) {
     config->enable_logging = true;
     config->dry_calibration_voltage = 3.0f;
     config->wet_calibration_voltage = 1.0f;
+    config->enable_wifi = true;
+    config->enable_http_sending = true;
+    
+    // Generate device ID from MAC address
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    snprintf(config->device_id, sizeof(config->device_id), "SOIL_%02X%02X%02X%02X%02X%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 esp_err_t soil_monitor_init(soil_monitor_app_t* app, const soil_monitor_config_t* config) {
@@ -77,8 +117,47 @@ esp_err_t soil_monitor_init(soil_monitor_app_t* app, const soil_monitor_config_t
         return ret;
     }
     
+    // Initialize WiFi if enabled
+    if (config->enable_wifi) {
+        wifi_manager_config_t wifi_config = {
+            .ssid = WIFI_SSID,
+            .password = WIFI_PASSWORD,
+            .max_retry = WIFI_MAX_RETRY
+        };
+        
+        ret = wifi_manager_init(&wifi_config, wifi_status_callback);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to initialize WiFi manager: %s", esp_err_to_name(ret));
+            csm_v2_deinit(&app->sensor_driver);
+            return ret;
+        }
+        
+        // Initialize HTTP client if HTTP sending is enabled
+        if (config->enable_http_sending) {
+            http_client_config_t http_config = {
+                .server_ip = HTTP_SERVER_IP,
+                .server_port = HTTP_SERVER_PORT,
+                .endpoint = HTTP_ENDPOINT,
+                .timeout_ms = HTTP_TIMEOUT_MS,
+                .max_retries = HTTP_MAX_RETRIES
+            };
+            
+            ret = http_client_init(&http_config);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to initialize HTTP client: %s", esp_err_to_name(ret));
+                wifi_manager_deinit();
+                csm_v2_deinit(&app->sensor_driver);
+                return ret;
+            }
+        }
+    }
+    
     app->is_running = false;
     ESP_LOGI(TAG, "Soil monitoring application initialized");
+    ESP_LOGI(TAG, "Device ID: %s", app->config.device_id);
+    if (config->enable_wifi) {
+        ESP_LOGI(TAG, "WiFi and HTTP communication enabled");
+    }
     return ESP_OK;
 }
 
@@ -91,6 +170,15 @@ esp_err_t soil_monitor_start(soil_monitor_app_t* app) {
     if (app->is_running) {
         ESP_LOGW(TAG, "Application already running");
         return ESP_OK;
+    }
+    
+    // Start WiFi connection if enabled
+    if (app->config.enable_wifi) {
+        esp_err_t ret = wifi_manager_connect();
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to start WiFi connection: %s", esp_err_to_name(ret));
+            return ret;
+        }
     }
     
     app->is_running = true;
@@ -108,6 +196,9 @@ esp_err_t soil_monitor_start(soil_monitor_app_t* app) {
     if (task_created != pdPASS) {
         ESP_LOGE(TAG, "Failed to create monitoring task");
         app->is_running = false;
+        if (app->config.enable_wifi) {
+            wifi_manager_disconnect();
+        }
         return ESP_FAIL;
     }
     
@@ -147,6 +238,16 @@ esp_err_t soil_monitor_deinit(soil_monitor_app_t* app) {
     esp_err_t ret = soil_monitor_stop(app);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to stop application: %s", esp_err_to_name(ret));
+    }
+    
+    // Deinitialize HTTP client if enabled
+    if (app->config.enable_http_sending) {
+        http_client_deinit();
+    }
+    
+    // Deinitialize WiFi if enabled
+    if (app->config.enable_wifi) {
+        wifi_manager_deinit();
     }
     
     // Deinitialize sensor driver

@@ -47,7 +47,7 @@ void app_main(void) {
     }
     
     ESP_LOGI(TAG, "Application started successfully!");
-    ESP_LOGI(TAG, "Monitoring soil moisture every %d ms", config.measurement_interval_ms);
+    ESP_LOGI(TAG, "Monitoring soil moisture every %" PRIu32 " ms", config.measurement_interval_ms);
     
     // Application will continue running in the background task
     // In a real application, you might want to add additional functionality here

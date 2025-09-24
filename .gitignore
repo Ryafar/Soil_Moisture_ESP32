@@ -50,3 +50,4 @@ Thumbs.db
 .devcontainer/Dockerfile
 .gitignore
 .devcontainer/devcontainer.json
+main/config/credentials.h

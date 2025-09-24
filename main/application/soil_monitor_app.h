@@ -11,6 +11,8 @@
 
 #include "esp_err.h"
 #include "../csm-v2-driver/csm-v2-driver.h"
+#include "../wifi/wifi_manager.h"
+#include "../http/http_client.h"
 
 /**
  * @brief Application configuration
@@ -22,6 +24,9 @@ typedef struct {
     bool enable_logging;                ///< Enable detailed logging
     float dry_calibration_voltage;      ///< Dry calibration voltage
     float wet_calibration_voltage;      ///< Wet calibration voltage
+    bool enable_wifi;                   ///< Enable WiFi connectivity
+    bool enable_http_sending;           ///< Enable HTTP data transmission
+    char device_id[32];                 ///< Unique device identifier
 } soil_monitor_config_t;
 
 /**

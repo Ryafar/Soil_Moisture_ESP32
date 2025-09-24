@@ -10,6 +10,7 @@
 #define ESP32_CONFIG_H
 
 #include "esp_adc/adc_oneshot.h"
+#include "credentials.h"
 
 // ============================================================================
 // ADC Configuration
@@ -51,6 +52,24 @@
 #define SOIL_AUTO_CALIBRATION_ENABLE    0
 #define SOIL_CALIBRATION_TIMEOUT_MS     10000
 #define SOIL_CALIBRATION_SAMPLES        10
+
+// ============================================================================
+// WiFi Configuration
+// ============================================================================
+
+#define WIFI_MAX_RETRY          5
+#define WIFI_CONNECTED_BIT      BIT0
+#define WIFI_FAIL_BIT           BIT1
+
+// ============================================================================
+// HTTP Configuration
+// ============================================================================
+
+#define HTTP_SERVER_IP          "192.168.1.100"    // Change to your PC's IP
+#define HTTP_SERVER_PORT        8080
+#define HTTP_ENDPOINT           "/soil-data"
+#define HTTP_TIMEOUT_MS         5000
+#define HTTP_MAX_RETRIES        3
 
 #endif // ESP32_CONFIG_H
 
