@@ -57,7 +57,7 @@
 // WiFi Configuration
 // ============================================================================
 
-#define WIFI_MAX_RETRY          5
+#define WIFI_MAX_RETRY          10
 #define WIFI_CONNECTED_BIT      BIT0
 #define WIFI_FAIL_BIT           BIT1
 
@@ -65,7 +65,7 @@
 // HTTP Configuration
 // ============================================================================
 
-#define HTTP_SERVER_IP          "192.168.1.100"    // Change to your PC's IP
+#define HTTP_SERVER_IP          "192.168.1.13"    // Your PC's IP address
 #define HTTP_SERVER_PORT        8080
 #define HTTP_ENDPOINT           "/soil-data"
 #define HTTP_TIMEOUT_MS         5000

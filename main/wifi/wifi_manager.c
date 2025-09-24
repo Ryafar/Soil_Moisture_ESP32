@@ -67,6 +67,16 @@ esp_err_t wifi_manager_init(const wifi_manager_config_t* config, wifi_status_cal
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
+    // Set country code to help with 2.4GHz channel selection
+    wifi_country_t country = {
+        .cc = "CH",  // Switzerland
+        .schan = 1,
+        .nchan = 13,
+        .max_tx_power = 20,
+        .policy = WIFI_COUNTRY_POLICY_AUTO
+    };
+    ESP_ERROR_CHECK(esp_wifi_set_country(&country));
+
     // Register event handlers
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
                                                        ESP_EVENT_ANY_ID,
@@ -85,13 +95,19 @@ esp_err_t wifi_manager_init(const wifi_manager_config_t* config, wifi_status_cal
 
 esp_err_t wifi_manager_connect(void)
 {
+    // First, let's scan for available networks to find the 2.4GHz one
+    ESP_LOGI(TAG, "Scanning for WiFi networks...");
+    
     wifi_config_t wifi_config = {
         .sta = {
-            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+            .threshold.authmode = WIFI_AUTH_OPEN,
             .pmf_cfg = {
                 .capable = true,
                 .required = false
             },
+            .scan_method = WIFI_ALL_CHANNEL_SCAN,
+            .sort_method = WIFI_CONNECT_AP_BY_SIGNAL,
+            .threshold.rssi = -127,
         },
     };
     
@@ -165,14 +181,19 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t* disconnected = (wifi_event_sta_disconnected_t*) event_data;
+        ESP_LOGW(TAG, "Disconnected from WiFi. Reason: %d", disconnected->reason);
+        
         if (s_retry_num < s_wifi_config.max_retry) {
+            // Add a small delay before retry to help with dual-band issues
+            vTaskDelay(pdMS_TO_TICKS(2000));
             esp_wifi_connect();
             s_retry_num++;
             ESP_LOGI(TAG, "Retry to connect to the AP (attempt %d/%d)", s_retry_num, s_wifi_config.max_retry);
         } else {
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
             update_status(WIFI_STATUS_ERROR, NULL);
-            ESP_LOGI(TAG, "Connect to the AP failed");
+            ESP_LOGE(TAG, "Connect to the AP failed after %d attempts", s_wifi_config.max_retry);
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;

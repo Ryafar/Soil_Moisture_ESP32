@@ -29,6 +29,8 @@ void app_main(void) {
     config.enable_logging = SOIL_ENABLE_DETAILED_LOGGING;
     config.dry_calibration_voltage = SOIL_DRY_VOLTAGE_DEFAULT;
     config.wet_calibration_voltage = SOIL_WET_VOLTAGE_DEFAULT;
+    config.enable_wifi = true;           // Re-enable WiFi
+    config.enable_http_sending = true;   // Re-enable HTTP
     
     ESP_LOGI(TAG, "Initializing soil monitoring application...");
     esp_err_t ret = soil_monitor_init(&app, &config);
