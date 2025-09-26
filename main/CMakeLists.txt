@@ -2,9 +2,9 @@
 #   MAIN Application   #
 ########################
 
-# idf_component_register(SRCS "soil-sensor-example-main.c"
+# idf_component_register(SRCS "soil_sensor_example_main.c"
 #                             "hal/adc_hal.c"
-#                             "csm-v2-driver/csm-v2-driver.c"
+#                             "csm_v2_driver/csm_v2_driver.c"
 #                             "application/soil_monitor_app.c"
 #                             "wifi/wifi_manager.c"
 #                             "http/http_client.c"
