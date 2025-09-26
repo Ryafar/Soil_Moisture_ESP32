@@ -11,6 +11,16 @@
 
 #include "esp_err.h"
 #include "esp_wifi.h"
+#include "esp_event.h"
+#include "esp_log.h"
+#include "esp_netif.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
+#include <stdbool.h>
+
+// WiFi Manager constants
+#define WIFI_MANAGER_TAG "WiFiManager"
+#define WIFI_IP_STRING_MAX_LEN 16
 
 /**
  * @brief WiFi connection status
@@ -86,7 +96,7 @@ bool wifi_manager_is_connected(void);
 /**
  * @brief Get current IP address
  * 
- * @param ip_str Buffer to store IP address string (min 16 bytes)
+ * @param ip_str Buffer to store IP address string (min WIFI_IP_STRING_MAX_LEN bytes)
  * @return esp_err_t ESP_OK if connected and IP retrieved, error otherwise
  */
 esp_err_t wifi_manager_get_ip(char* ip_str);
