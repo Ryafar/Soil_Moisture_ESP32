@@ -3,9 +3,10 @@
  * @brief WiFi Connection Manager Implementation
  */
 
-#include <string.h>
+#include "../../config/esp32-config.h"
 #include "wifi_manager.h"
-#include "../config/esp32-config.h"
+
+#include <string.h>
 #include "nvs_flash.h"
 #include "freertos/task.h"
 
