@@ -23,4 +23,21 @@ void app_main(void) {
         ESP_LOGI(TAG, "Got IP: %s", ip_str);
     }
 
+    // Test HTTP connection
+    http_client_config_t http_config = {
+        .server_ip = HTTP_SERVER_IP,
+        .server_port = HTTP_SERVER_PORT,
+        .endpoint = HTTP_ENDPOINT,
+        .timeout_ms = HTTP_TIMEOUT_MS,
+        .max_retries = HTTP_MAX_RETRIES,
+    };
+
+    http_client_init(&http_config);
+    http_client_test_connection();
+
+
+    // Cleanup
+    http_client_deinit();
+    wifi_manager_deinit();
+    ESP_LOGI(TAG, "WiFi Connection Testing Cleanup Completed");
 }

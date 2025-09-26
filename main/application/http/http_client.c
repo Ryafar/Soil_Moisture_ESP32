@@ -4,13 +4,6 @@
  */
 
 #include "http_client.h"
-#include "../config/esp32-config.h"
-#include "esp_http_client.h"
-#include "esp_log.h"
-#include "cJSON.h"
-#include "esp_system.h"
-#include "sys/time.h"
-#include <string.h>
 
 static const char *TAG = "HTTPClient";
 
@@ -18,10 +11,10 @@ static const char *TAG = "HTTPClient";
 static http_client_config_t s_config;
 static int s_last_status_code = 0;
 static bool s_initialized = false;
+static esp_http_client_handle_t s_persistent_client = NULL;
 
 // Forward declarations
 static esp_err_t http_event_handler(esp_http_client_event_t *evt);
-static uint64_t get_timestamp_ms(void);
 static char* create_json_payload(const soil_data_packet_t* packet);
 
 esp_err_t http_client_init(const http_client_config_t* config)
@@ -31,9 +24,32 @@ esp_err_t http_client_init(const http_client_config_t* config)
     }
 
     memcpy(&s_config, config, sizeof(http_client_config_t));
+    
+    // Create persistent HTTP client
+    char url[128];
+    snprintf(url, sizeof(url), "http://%s:%d", 
+             s_config.server_ip, s_config.server_port);
+
+    esp_http_client_config_t client_config = {
+        .url = url,
+        .event_handler = http_event_handler,
+        .timeout_ms = s_config.timeout_ms,
+        .method = HTTP_METHOD_POST,
+        .keep_alive_enable = true,
+        .keep_alive_idle = 5,
+        .keep_alive_interval = 5,
+        .keep_alive_count = 3,
+    };
+
+    s_persistent_client = esp_http_client_init(&client_config);
+    if (s_persistent_client == NULL) {
+        ESP_LOGE(TAG, "Failed to initialize persistent HTTP client");
+        return ESP_FAIL;
+    }
+
     s_initialized = true;
     
-    ESP_LOGI(TAG, "HTTP client initialized for server %s:%d%s", 
+    ESP_LOGI(TAG, "HTTP client initialized for server %s:%d%s with persistent connection", 
              s_config.server_ip, s_config.server_port, s_config.endpoint);
     
     return ESP_OK;
@@ -41,6 +57,10 @@ esp_err_t http_client_init(const http_client_config_t* config)
 
 esp_err_t http_client_deinit(void)
 {
+    if (s_persistent_client) {
+        esp_http_client_cleanup(s_persistent_client);
+        s_persistent_client = NULL;
+    }
     s_initialized = false;
     ESP_LOGI(TAG, "HTTP client deinitialized");
     return ESP_OK;
@@ -53,8 +73,9 @@ http_response_status_t http_client_send_soil_data(const csm_v2_reading_t* readin
     }
 
     // Create data packet
+    // ? Can be removed and directly use reading
     soil_data_packet_t packet = {
-        .timestamp = get_timestamp_ms(),
+        .timestamp = reading->timestamp,
         .voltage = reading->voltage,
         .moisture_percent = reading->moisture_percent,
         .raw_adc = reading->raw_adc
@@ -68,49 +89,39 @@ http_response_status_t http_client_send_soil_data(const csm_v2_reading_t* readin
 
 http_response_status_t http_client_send_data_packet(const soil_data_packet_t* packet)
 {
-    if (!s_initialized || packet == NULL) {
+    if (!s_initialized || packet == NULL || s_persistent_client == NULL) {
         return HTTP_RESPONSE_ERROR;
     }
 
-    char url[128];
-    snprintf(url, sizeof(url), "http://%s:%d%s", 
+    // Build full URL with endpoint
+    char full_url[256];
+    snprintf(full_url, sizeof(full_url), "http://%s:%d%s", 
              s_config.server_ip, s_config.server_port, s_config.endpoint);
 
-    esp_http_client_config_t config = {
-        .url = url,
-        .event_handler = http_event_handler,
-        .timeout_ms = s_config.timeout_ms,
-        .method = HTTP_METHOD_POST,
-    };
-
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (client == NULL) {
-        ESP_LOGE(TAG, "Failed to initialize HTTP client");
-        return HTTP_RESPONSE_ERROR;
-    }
+    // Set the specific endpoint for this request
+    esp_http_client_set_url(s_persistent_client, full_url);
 
     // Create JSON payload
     char* json_payload = create_json_payload(packet);
     if (json_payload == NULL) {
-        esp_http_client_cleanup(client);
         return HTTP_RESPONSE_ERROR;
     }
 
-    // Set headers
-    esp_http_client_set_header(client, "Content-Type", "application/json");
-    esp_http_client_set_post_field(client, json_payload, strlen(json_payload));
+    // Set headers and payload for this request
+    esp_http_client_set_header(s_persistent_client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(s_persistent_client, json_payload, strlen(json_payload));
 
-    ESP_LOGI(TAG, "Sending HTTP POST to %s", url);
+    ESP_LOGI(TAG, "Sending HTTP POST to %s", full_url);
     ESP_LOGD(TAG, "Payload: %s", json_payload);
 
     http_response_status_t result = HTTP_RESPONSE_ERROR;
     int retry_count = 0;
 
     while (retry_count <= s_config.max_retries) {
-        esp_err_t err = esp_http_client_perform(client);
+        esp_err_t err = esp_http_client_perform(s_persistent_client);
         
         if (err == ESP_OK) {
-            s_last_status_code = esp_http_client_get_status_code(client);
+            s_last_status_code = esp_http_client_get_status_code(s_persistent_client);
             ESP_LOGI(TAG, "HTTP POST Status = %d", s_last_status_code);
             
             if (s_last_status_code >= 200 && s_last_status_code < 300) {
@@ -135,7 +146,6 @@ http_response_status_t http_client_send_data_packet(const soil_data_packet_t* pa
     }
 
     free(json_payload);
-    esp_http_client_cleanup(client);
     
     return result;
 }
@@ -148,12 +158,13 @@ http_response_status_t http_client_test_connection(void)
 
     // Create a test data packet
     soil_data_packet_t test_packet = {
-        .timestamp = get_timestamp_ms(),
+        .timestamp = esp_utils_get_timestamp_ms(),
         .voltage = 2.5f,
         .moisture_percent = 50.0f,
         .raw_adc = 2048
     };
-    strcpy(test_packet.device_id, "TEST_CONNECTION");
+    strncpy(test_packet.device_id, "TEST_CONNECTION", sizeof(test_packet.device_id) - 1);
+    test_packet.device_id[sizeof(test_packet.device_id) - 1] = '\0';
 
     ESP_LOGI(TAG, "Testing HTTP connection...");
     return http_client_send_data_packet(&test_packet);
@@ -195,12 +206,7 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-static uint64_t get_timestamp_ms(void)
-{
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (uint64_t)(tv.tv_sec) * 1000 + (uint64_t)(tv.tv_usec) / 1000;
-}
+
 
 static char* create_json_payload(const soil_data_packet_t* packet)
 {

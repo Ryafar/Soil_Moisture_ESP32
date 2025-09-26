@@ -9,8 +9,18 @@
 #ifndef HTTP_CLIENT_H
 #define HTTP_CLIENT_H
 
+#include "../../drivers/csm_v2_driver/csm_v2_driver.h"
+#include "../../utils/esp_utils.h"
+#include "../../config/esp32-config.h"
+
 #include "esp_err.h"
-#include "../csm-v2-driver/csm-v2-driver.h"
+#include "esp_http_client.h"
+#include "esp_log.h"
+#include "cJSON.h"
+#include "esp_system.h"
+#include <sys/time.h>
+#include <string.h>
+#include <stdint.h>
 
 /**
  * @brief HTTP client configuration

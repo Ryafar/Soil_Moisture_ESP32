@@ -37,6 +37,7 @@ typedef struct {
  * @brief Soil moisture reading structure
  */
 typedef struct {
+    uint64_t timestamp;                 ///< Timestamp of the reading
     float voltage;                      ///< Raw voltage reading
     float moisture_percent;             ///< Moisture percentage (0-100%)
     int raw_adc;                        ///< Raw ADC value

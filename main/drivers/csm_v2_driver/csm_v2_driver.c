@@ -98,6 +98,9 @@ esp_err_t csm_v2_read(csm_v2_driver_t* driver, csm_v2_reading_t* reading) {
         ESP_LOGE(TAG, "Driver not initialized");
         return ESP_ERR_INVALID_STATE;
     }
+
+    // Read timestamp
+    reading->timestamp = esp_timer_get_time() / 1000; // Convert to milliseconds
     
     // Read raw ADC value
     esp_err_t ret = adc_hal_read_raw(&driver->adc_hal, &reading->raw_adc);

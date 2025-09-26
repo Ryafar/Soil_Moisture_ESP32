@@ -8,8 +8,10 @@
 // Project configuration
 #include "../config/esp32-config.h"
 #include "../config/credentials.h"
+#include "../application/http/http_client.h"
 
 #include "../drivers/wifi/wifi_manager.h"
+
 
 /**
  * @brief Main application entry point
