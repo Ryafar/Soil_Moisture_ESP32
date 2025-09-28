@@ -1,24 +1,33 @@
 /**
+ * TODOs
+ * - [ ] add own error types instead of esp errors
+ */
+
+
+
+
+/**
  * @file csm-v2-driver.c
  * @brief Capacitive Soil Moisture Sensor V2 Driver - Implementation
  */
 
-#include "csm-v2-driver.h"
+#include "csm_v2_driver.h"
 #include "esp_log.h"
 #include <string.h>
 
 static const char* TAG = "CSM_V2";
 
-void csm_v2_get_default_config(csm_v2_config_t* config, adc_unit_t adc_unit, adc_channel_t adc_channel) {
+esp_err_t csm_v2_get_default_config(csm_v2_config_t* config, adc_unit_t adc_unit, adc_channel_t adc_channel) {
     if (config == NULL) {
-        return;
+        return ESP_ERR_INVALID_ARG;
     }
     
     config->adc_unit = adc_unit;
     config->adc_channel = adc_channel;
-    config->dry_voltage = 3.0f;         // Typical dry reading
-    config->wet_voltage = 1.0f;         // Typical wet reading  
+    config->dry_voltage = CSM_V2_DRY_VOLTAGE_DEFAULT;         // Typical dry reading
+    config->wet_voltage = CSM_V2_WET_VOLTAGE_DEFAULT;         // Typical wet reading
     config->enable_calibration = false;
+    return ESP_OK;
 }
 
 esp_err_t csm_v2_init(csm_v2_driver_t* driver, const csm_v2_config_t* config) {
@@ -100,7 +109,7 @@ esp_err_t csm_v2_read(csm_v2_driver_t* driver, csm_v2_reading_t* reading) {
     }
 
     // Read timestamp
-    reading->timestamp = esp_timer_get_time() / 1000; // Convert to milliseconds
+    reading->timestamp = esp_utils_get_timestamp_ms();
     
     // Read raw ADC value
     esp_err_t ret = adc_hal_read_raw(&driver->adc_hal, &reading->raw_adc);
@@ -115,20 +124,7 @@ esp_err_t csm_v2_read(csm_v2_driver_t* driver, csm_v2_reading_t* reading) {
         return ret;
     }
     
-    // Calculate moisture percentage
-    // Lower voltage = higher moisture (capacitive sensors)
-    float voltage_range = driver->config.dry_voltage - driver->config.wet_voltage;
-    if (voltage_range <= 0) {
-        ESP_LOGW(TAG, "Invalid calibration values, using raw percentage");
-        reading->moisture_percent = 0.0f;
-    } else {
-        float normalized = (driver->config.dry_voltage - reading->voltage) / voltage_range;
-        reading->moisture_percent = normalized * 100.0f;
-        
-        // Clamp to 0-100%
-        if (reading->moisture_percent < 0.0f) reading->moisture_percent = 0.0f;
-        if (reading->moisture_percent > 100.0f) reading->moisture_percent = 100.0f;
-    }
+    csm_v2_voltage_to_percent(driver, reading->voltage);
     
     ESP_LOGD(TAG, "Raw: %d, Voltage: %.3f V, Moisture: %.1f%%", 
              reading->raw_adc, reading->voltage, reading->moisture_percent);
@@ -153,4 +149,34 @@ esp_err_t csm_v2_calibrate(csm_v2_driver_t* driver, float dry_voltage, float wet
     
     ESP_LOGI(TAG, "Calibration updated: Dry=%.3fV, Wet=%.3fV", dry_voltage, wet_voltage);
     return ESP_OK;
+}
+
+
+
+
+// MARK: UTILS
+float csm_v2_voltage_to_percent(csm_v2_driver_t* driver, float voltage) {
+    if (driver == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    float moisture_percent = 0;
+    
+    if (voltage >= driver->config.dry_voltage) {
+        moisture_percent = 0.0f;
+    } else if (voltage <= driver->config.wet_voltage) {
+        moisture_percent = 100.0f;
+    } else {
+        moisture_percent = 
+            ((driver->config.dry_voltage - voltage) / 
+                (driver->config.dry_voltage - driver->config.wet_voltage)) * 100.0f;
+    }
+    
+    // Clamp to [0, 100]
+    if (moisture_percent < 0.0f) {
+        moisture_percent = 0.0f;
+    } else if (moisture_percent > 100.0f) {
+        moisture_percent = 100.0f;
+    }
+    return moisture_percent;
 }

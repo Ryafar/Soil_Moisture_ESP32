@@ -11,7 +11,17 @@
 #define CSM_V2_DRIVER_H
 
 #include "esp_err.h"
+
+#include "utils/esp_utils.h"
 #include "../hal/adc_hal.h"
+
+/**
+ * Parameters
+ */
+#define CSM_V2_DRY_VOLTAGE_DEFAULT    3.0f   ///< Default dry voltage (in volts)
+#define CSM_V2_WET_VOLTAGE_DEFAULT    1.0f   ///< Default wet voltage (in volts)
+
+
 
 /**
  * @brief Soil moisture sensor configuration
@@ -49,8 +59,9 @@ typedef struct {
  * @param config Pointer to configuration structure to fill
  * @param adc_unit ADC unit to use
  * @param adc_channel ADC channel to use
+ * @return esp_err_t ESP_OK on success
  */
-void csm_v2_get_default_config(csm_v2_config_t* config, adc_unit_t adc_unit, adc_channel_t adc_channel);
+esp_err_t csm_v2_get_default_config(csm_v2_config_t* config, adc_unit_t adc_unit, adc_channel_t adc_channel);
 
 /**
  * @brief Initialize the soil moisture sensor driver
@@ -96,5 +107,8 @@ esp_err_t csm_v2_read(csm_v2_driver_t* driver, csm_v2_reading_t* reading);
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
 esp_err_t csm_v2_calibrate(csm_v2_driver_t* driver, float dry_voltage, float wet_voltage);
+
+// MARK: UTILS
+float csm_v2_voltage_to_percent(csm_v2_driver_t* driver, float voltage);
 
 #endif // CSM_V2_DRIVER_H
