@@ -174,14 +174,41 @@ esp_err_t wifi_manager_get_ip(char* ip_str)
 static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        ESP_LOGI(TAG, "WiFi station started, attempting connection...");
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t* disconnected = (wifi_event_sta_disconnected_t*) event_data;
+        
+        ESP_LOGW(TAG, "WiFi disconnected - Reason: %d", disconnected->reason);
+        
+        // Handle different disconnection reasons
+        switch(disconnected->reason) {
+            case WIFI_REASON_NO_AP_FOUND:
+                ESP_LOGE(TAG, "WiFi Error: Network '%s' not found! Check SSID.", s_wifi_config.ssid);
+                break;
+            case WIFI_REASON_AUTH_FAIL:
+                ESP_LOGE(TAG, "WiFi Error: Authentication failed! Check password.");
+                break;
+            case WIFI_REASON_ASSOC_FAIL:
+                ESP_LOGE(TAG, "WiFi Error: Association failed! Router may be rejecting connection.");
+                break;
+            case WIFI_REASON_HANDSHAKE_TIMEOUT:
+                ESP_LOGE(TAG, "WiFi Error: Handshake timeout! Weak signal or router issues.");
+                break;
+            default:
+                ESP_LOGW(TAG, "WiFi disconnected with reason code: %d", disconnected->reason);
+                break;
+        }
+        
         if (s_retry_num < s_wifi_config.max_retry) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
+            ESP_LOGI(TAG, "Retrying WiFi connection (%d/%d) in 2 seconds...", 
+                     s_retry_num + 1, s_wifi_config.max_retry);
+            vTaskDelay(pdMS_TO_TICKS(2000)); // Wait 2 seconds between retries
             esp_wifi_connect();
             s_retry_num++;
             update_status(WIFI_STATUS_CONNECTING, NULL);
         } else {
+            ESP_LOGE(TAG, "WiFi connection failed after %d attempts", s_wifi_config.max_retry);
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
             update_status(WIFI_STATUS_ERROR, NULL);
         }
@@ -193,7 +220,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
         update_status(WIFI_STATUS_CONNECTED, ip_str);
-        ESP_LOGI(TAG, "Got IP: %s", ip_str);
+        ESP_LOGI(TAG, "WiFi connected successfully! IP: %s", ip_str);
     }
 }
 

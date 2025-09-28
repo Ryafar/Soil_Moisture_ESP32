@@ -15,7 +15,6 @@ static esp_http_client_handle_t s_persistent_client = NULL;
 
 // Forward declarations
 static esp_err_t http_event_handler(esp_http_client_event_t *evt);
-static char* create_json_payload(const soil_data_packet_t* packet);
 
 esp_err_t http_client_init(const http_client_config_t* config)
 {
@@ -66,30 +65,9 @@ esp_err_t http_client_deinit(void)
     return ESP_OK;
 }
 
-http_response_status_t http_client_send_soil_data(const csm_v2_reading_t* reading, const char* device_id)
+http_response_status_t http_client_send_json(const char* json_payload)
 {
-    if (!s_initialized || reading == NULL || device_id == NULL) {
-        return HTTP_RESPONSE_ERROR;
-    }
-
-    // Create data packet
-    // ? Can be removed and directly use reading
-    soil_data_packet_t packet = {
-        .timestamp = reading->timestamp,
-        .voltage = reading->voltage,
-        .moisture_percent = reading->moisture_percent,
-        .raw_adc = reading->raw_adc
-    };
-    
-    strncpy(packet.device_id, device_id, sizeof(packet.device_id) - 1);
-    packet.device_id[sizeof(packet.device_id) - 1] = '\0';
-
-    return http_client_send_data_packet(&packet);
-}
-
-http_response_status_t http_client_send_data_packet(const soil_data_packet_t* packet)
-{
-    if (!s_initialized || packet == NULL || s_persistent_client == NULL) {
+    if (!s_initialized || json_payload == NULL || s_persistent_client == NULL) {
         return HTTP_RESPONSE_ERROR;
     }
 
@@ -100,12 +78,6 @@ http_response_status_t http_client_send_data_packet(const soil_data_packet_t* pa
 
     // Set the specific endpoint for this request
     esp_http_client_set_url(s_persistent_client, full_url);
-
-    // Create JSON payload
-    char* json_payload = create_json_payload(packet);
-    if (json_payload == NULL) {
-        return HTTP_RESPONSE_ERROR;
-    }
 
     // Set headers and payload for this request
     esp_http_client_set_header(s_persistent_client, "Content-Type", "application/json");
@@ -144,8 +116,6 @@ http_response_status_t http_client_send_data_packet(const soil_data_packet_t* pa
             vTaskDelay(pdMS_TO_TICKS(1000)); // Wait 1 second before retry
         }
     }
-
-    free(json_payload);
     
     return result;
 }
@@ -156,18 +126,18 @@ http_response_status_t http_client_test_connection(void)
         return HTTP_RESPONSE_ERROR;
     }
 
-    // Create a test data packet
-    soil_data_packet_t test_packet = {
-        .timestamp = esp_utils_get_timestamp_ms(),
-        .voltage = 2.5f,
-        .moisture_percent = 50.0f,
-        .raw_adc = 2048
-    };
-    strncpy(test_packet.device_id, "TEST_CONNECTION", sizeof(test_packet.device_id) - 1);
-    test_packet.device_id[sizeof(test_packet.device_id) - 1] = '\0';
+    // Create a simple test JSON payload
+    // TODO: Adjust server to give better response for invalid data packet format
+    const char* test_json = "{"
+        "\"timestamp\": 1234567890000,"
+        "\"voltage\": 3.1415,"
+        "\"moisture_percent\": 3.1415,"
+        "\"raw_adc\": 31415,"
+        "\"device_id\": \"TEST_CONNECTION\""
+        "}";
 
     ESP_LOGI(TAG, "Testing HTTP connection...");
-    return http_client_send_data_packet(&test_packet);
+    return http_client_send_json(test_json);
 }
 
 int http_client_get_last_status_code(void)
@@ -204,31 +174,4 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
             break;
     }
     return ESP_OK;
-}
-
-
-
-static char* create_json_payload(const soil_data_packet_t* packet)
-{
-    cJSON *json = cJSON_CreateObject();
-    if (json == NULL) {
-        return NULL;
-    }
-
-    cJSON *timestamp = cJSON_CreateNumber((double)packet->timestamp);
-    cJSON *voltage = cJSON_CreateNumber(packet->voltage);
-    cJSON *moisture = cJSON_CreateNumber(packet->moisture_percent);
-    cJSON *raw_adc = cJSON_CreateNumber(packet->raw_adc);
-    cJSON *device_id = cJSON_CreateString(packet->device_id);
-
-    cJSON_AddItemToObject(json, "timestamp", timestamp);
-    cJSON_AddItemToObject(json, "voltage", voltage);
-    cJSON_AddItemToObject(json, "moisture_percent", moisture);
-    cJSON_AddItemToObject(json, "raw_adc", raw_adc);
-    cJSON_AddItemToObject(json, "device_id", device_id);
-
-    char *json_string = cJSON_Print(json);
-    cJSON_Delete(json);
-
-    return json_string;
 }

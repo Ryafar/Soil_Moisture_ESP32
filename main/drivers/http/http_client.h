@@ -9,14 +9,12 @@
 #ifndef HTTP_CLIENT_H
 #define HTTP_CLIENT_H
 
-#include "../../drivers/csm_v2_driver/csm_v2_driver.h"
 #include "../../utils/esp_utils.h"
 #include "../../config/esp32-config.h"
 
 #include "esp_err.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
-#include "cJSON.h"
 #include "esp_system.h"
 #include <sys/time.h>
 #include <string.h>
@@ -32,17 +30,6 @@ typedef struct {
     int timeout_ms;         ///< Request timeout in milliseconds
     int max_retries;        ///< Maximum retry attempts
 } http_client_config_t;
-
-/**
- * @brief Soil sensor data packet for transmission
- */
-typedef struct {
-    uint64_t timestamp;             ///< Unix timestamp
-    float voltage;                  ///< Raw voltage reading
-    float moisture_percent;         ///< Moisture percentage
-    int raw_adc;                    ///< Raw ADC value
-    char device_id[32];            ///< Device identifier
-} soil_data_packet_t;
 
 /**
  * @brief HTTP response status
@@ -70,21 +57,12 @@ esp_err_t http_client_init(const http_client_config_t* config);
 esp_err_t http_client_deinit(void);
 
 /**
- * @brief Send soil moisture data to server
+ * @brief Send JSON payload to server
  * 
- * @param reading Sensor reading to send
- * @param device_id Device identifier string
+ * @param json_payload JSON string to send
  * @return http_response_status_t Response status
  */
-http_response_status_t http_client_send_soil_data(const csm_v2_reading_t* reading, const char* device_id);
-
-/**
- * @brief Send raw data packet to server
- * 
- * @param packet Data packet to send
- * @return http_response_status_t Response status
- */
-http_response_status_t http_client_send_data_packet(const soil_data_packet_t* packet);
+http_response_status_t http_client_send_json(const char* json_payload);
 
 /**
  * @brief Test HTTP connection to server
