@@ -5,16 +5,65 @@
 
 #include "soil_monitor_app.h"
 #include "../config/esp32-config.h"
+#include "../utils/esp_utils.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "cJSON.h"
 #include <string.h>
 
 static const char* TAG = "SOIL_MONITOR_APP";
 
 // Task handle for the monitoring task
 static TaskHandle_t monitoring_task_handle = NULL;
+
+/**
+ * @brief Create JSON payload for soil sensor data
+ */
+static char* create_soil_json_payload(const csm_v2_reading_t* reading, const char* device_id) {
+    cJSON *json = cJSON_CreateObject();
+    if (json == NULL) {
+        return NULL;
+    }
+
+    cJSON *timestamp = cJSON_CreateNumber((double)esp_utils_get_timestamp_ms());
+    cJSON *voltage = cJSON_CreateNumber(reading->voltage);
+    cJSON *moisture = cJSON_CreateNumber(reading->moisture_percent);
+    cJSON *raw_adc = cJSON_CreateNumber(reading->raw_adc);
+    cJSON *device_id_json = cJSON_CreateString(device_id);
+
+    cJSON_AddItemToObject(json, "timestamp", timestamp);
+    cJSON_AddItemToObject(json, "voltage", voltage);
+    cJSON_AddItemToObject(json, "moisture_percent", moisture);
+    cJSON_AddItemToObject(json, "raw_adc", raw_adc);
+    cJSON_AddItemToObject(json, "device_id", device_id_json);
+
+    char *json_string = cJSON_Print(json);
+    cJSON_Delete(json);
+
+    return json_string;
+}
+
+/**
+ * @brief Send soil sensor reading to HTTP server
+ */
+static http_response_status_t soil_send_reading_to_server(const csm_v2_reading_t* reading, const char* device_id) {
+    if (reading == NULL || device_id == NULL) {
+        return HTTP_RESPONSE_ERROR;
+    }
+
+    char* json_payload = create_soil_json_payload(reading, device_id);
+    if (json_payload == NULL) {
+        ESP_LOGE(TAG, "Failed to create JSON payload");
+        return HTTP_RESPONSE_ERROR;
+    }
+
+    http_response_status_t result = http_client_send_json(json_payload);
+    
+    free(json_payload);
+    return result;
+}
 
 // WiFi status callback
 static void wifi_status_callback(wifi_status_t status, const char* ip_addr) {
@@ -53,7 +102,7 @@ static void soil_monitoring_task(void* pvParameters) {
             
             // Send data via HTTP if enabled and WiFi is connected
             if (app->config.enable_http_sending && wifi_manager_is_connected()) {
-                http_response_status_t http_status = http_client_send_soil_data(&reading, app->config.device_id);
+                http_response_status_t http_status = soil_send_reading_to_server(&reading, app->config.device_id);
                 if (http_status == HTTP_RESPONSE_OK) {
                     if (app->config.enable_logging) {
                         ESP_LOGI(TAG, "Data sent successfully to server");

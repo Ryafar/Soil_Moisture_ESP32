@@ -12,7 +12,7 @@
 #include "esp_err.h"
 #include "../csm-v2-driver/csm-v2-driver.h"
 #include "../wifi/wifi_manager.h"
-#include "../http/http_client.h"
+#include "../drivers/http/http_client.h"
 
 /**
  * @brief Application configuration
