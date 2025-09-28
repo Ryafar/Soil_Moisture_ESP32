@@ -9,8 +9,9 @@ idf_component_register(SRCS "soil_sensor_example_main.c"
                             "drivers/wifi/wifi_manager.c"
                             "drivers/http/http_client.c"
                             "utils/esp_utils.c"
+                            "utils/ntp_time.c"
                        INCLUDE_DIRS "."
-                       REQUIRES driver esp_adc esp_wifi esp_netif nvs_flash esp_event esp_http_client json esp_timer)
+                       REQUIRES driver esp_adc esp_wifi esp_netif nvs_flash esp_event esp_http_client json esp_timer lwip)
 
 
 #######################

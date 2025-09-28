@@ -6,6 +6,7 @@
 #include "soil_monitor_app.h"
 #include "../config/esp32-config.h"
 #include "../utils/esp_utils.h"
+#include "../utils/ntp_time.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
@@ -27,13 +28,30 @@ static char* create_soil_json_payload(const csm_v2_reading_t* reading, const cha
         return NULL;
     }
 
-    cJSON *timestamp = cJSON_CreateNumber((double)esp_utils_get_timestamp_ms());
+    // Use NTP timestamp if available, otherwise fallback to system timestamp
+    uint64_t timestamp_ms;
+    char iso_time_str[64];
+    
+    if (ntp_time_is_synced()) {
+        timestamp_ms = ntp_time_get_timestamp_ms();
+        esp_err_t ret = ntp_time_get_iso_string(iso_time_str, sizeof(iso_time_str));
+        if (ret != ESP_OK) {
+            strcpy(iso_time_str, "1970-01-01T00:00:00+00:00");
+        }
+    } else {
+        timestamp_ms = esp_utils_get_timestamp_ms();
+        strcpy(iso_time_str, "1970-01-01T00:00:00+00:00");  // Not synced
+    }
+
+    cJSON *timestamp = cJSON_CreateNumber((double)timestamp_ms);
+    cJSON *iso_timestamp = cJSON_CreateString(iso_time_str);
     cJSON *voltage = cJSON_CreateNumber(reading->voltage);
     cJSON *moisture = cJSON_CreateNumber(reading->moisture_percent);
     cJSON *raw_adc = cJSON_CreateNumber(reading->raw_adc);
     cJSON *device_id_json = cJSON_CreateString(device_id);
 
     cJSON_AddItemToObject(json, "timestamp", timestamp);
+    cJSON_AddItemToObject(json, "iso_timestamp", iso_timestamp);
     cJSON_AddItemToObject(json, "voltage", voltage);
     cJSON_AddItemToObject(json, "moisture_percent", moisture);
     cJSON_AddItemToObject(json, "raw_adc", raw_adc);
@@ -79,6 +97,23 @@ static void wifi_status_callback(wifi_status_t status, const char* ip_addr) {
             break;
         case WIFI_STATUS_ERROR:
             ESP_LOGE(TAG, "WiFi Connection Error");
+            break;
+    }
+}
+
+// NTP sync callback
+static void ntp_sync_callback(ntp_status_t status, const char* time_str) {
+    switch (status) {
+        case NTP_STATUS_SYNCED:
+            ESP_LOGI(TAG, "NTP Time Synchronized! Swiss time: %s", time_str ? time_str : "N/A");
+            break;
+        case NTP_STATUS_FAILED:
+            ESP_LOGW(TAG, "NTP Time Synchronization Failed");
+            break;
+        case NTP_STATUS_SYNCING:
+            ESP_LOGI(TAG, "NTP Time Synchronizing...");
+            break;
+        default:
             break;
     }
 }
@@ -184,6 +219,23 @@ esp_err_t soil_monitor_init(soil_monitor_app_t* app, const soil_monitor_config_t
     wifi_manager_connect();
     http_client_init(&http_config);
 
+    // Initialize NTP time synchronization for Switzerland
+    ESP_LOGI(TAG, "Initializing NTP time synchronization...");
+    esp_err_t ntp_ret = ntp_time_init(ntp_sync_callback);
+    if (ntp_ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to initialize NTP: %s", esp_err_to_name(ntp_ret));
+        ESP_LOGW(TAG, "Continuing without NTP sync - timestamps will be inaccurate");
+    } else {
+        ESP_LOGI(TAG, "NTP initialization started, waiting for sync...");
+        // Wait for NTP sync with timeout (optional)
+        ntp_ret = ntp_time_wait_for_sync(15000);  // 15 seconds timeout
+        if (ntp_ret == ESP_OK) {
+            ESP_LOGI(TAG, "NTP synchronized successfully!");
+        } else {
+            ESP_LOGW(TAG, "NTP sync timeout, will continue syncing in background");
+        }
+    }
+
 
     
     app->is_running = false;
@@ -266,6 +318,9 @@ esp_err_t soil_monitor_deinit(soil_monitor_app_t* app) {
     if (app->config.enable_wifi) {
         wifi_manager_deinit();
     }
+    
+    // Deinitialize NTP time synchronization
+    ntp_time_deinit();
     
     // Deinitialize sensor driver
     ret = csm_v2_deinit(&app->sensor_driver);
