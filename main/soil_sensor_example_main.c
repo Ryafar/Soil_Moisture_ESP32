@@ -6,7 +6,7 @@
  * and application layer.
  */
 
-#include "soil-sensor-example-main.h"
+#include "soil_sensor_example_main.h"
 #include "esp_log.h"
 
 static const char *TAG = "MAIN";
