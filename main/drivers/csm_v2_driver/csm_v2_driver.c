@@ -124,7 +124,8 @@ esp_err_t csm_v2_read(csm_v2_driver_t* driver, csm_v2_reading_t* reading) {
         return ret;
     }
     
-    csm_v2_voltage_to_percent(driver, reading->voltage);
+    float percent = csm_v2_voltage_to_percent(driver, reading->voltage);
+    reading->moisture_percent = percent;
     
     ESP_LOGD(TAG, "Raw: %d, Voltage: %.3f V, Moisture: %.1f%%", 
              reading->raw_adc, reading->voltage, reading->moisture_percent);

@@ -9,6 +9,9 @@ main/config/credentials.h
 # Build output
 build/
 
+# Python
+.venv/
+
 # Others
 sdkconfig*
 
