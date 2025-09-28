@@ -83,7 +83,7 @@ http_response_status_t http_client_send_json(const char* json_payload)
     esp_http_client_set_header(s_persistent_client, "Content-Type", "application/json");
     esp_http_client_set_post_field(s_persistent_client, json_payload, strlen(json_payload));
 
-    ESP_LOGI(TAG, "Sending HTTP POST to %s", full_url);
+    ESP_LOGD(TAG, "Sending HTTP POST to %s", full_url);
     ESP_LOGD(TAG, "Payload: %s", json_payload);
 
     http_response_status_t result = HTTP_RESPONSE_ERROR;
@@ -94,7 +94,7 @@ http_response_status_t http_client_send_json(const char* json_payload)
         
         if (err == ESP_OK) {
             s_last_status_code = esp_http_client_get_status_code(s_persistent_client);
-            ESP_LOGI(TAG, "HTTP POST Status = %d", s_last_status_code);
+            ESP_LOGD(TAG, "HTTP POST Status = %d", s_last_status_code);
             
             if (s_last_status_code >= 200 && s_last_status_code < 300) {
                 result = HTTP_RESPONSE_OK;

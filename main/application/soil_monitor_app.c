@@ -105,7 +105,7 @@ static void soil_monitoring_task(void* pvParameters) {
                 http_response_status_t http_status = soil_send_reading_to_server(&reading, app->config.device_id);
                 if (http_status == HTTP_RESPONSE_OK) {
                     if (app->config.enable_logging) {
-                        ESP_LOGI(TAG, "Data sent successfully to server");
+                        ESP_LOGD(TAG, "Data sent successfully to server");
                     }
                 } else {
                     ESP_LOGW(TAG, "Failed to send data to server (status: %d)", http_status);
@@ -166,47 +166,29 @@ esp_err_t soil_monitor_init(soil_monitor_app_t* app, const soil_monitor_config_t
         return ret;
     }
     
-    // Initialize WiFi if enabled
-    if (config->enable_wifi) {
-        wifi_manager_config_t wifi_config = {
-            .ssid = WIFI_SSID,
-            .password = WIFI_PASSWORD,
-            .max_retry = WIFI_MAX_RETRY
-        };
-        
-        ret = wifi_manager_init(&wifi_config, wifi_status_callback);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to initialize WiFi manager: %s", esp_err_to_name(ret));
-            csm_v2_deinit(&app->sensor_driver);
-            return ret;
-        }
-        
-        // Initialize HTTP client if HTTP sending is enabled
-        if (config->enable_http_sending) {
-            http_client_config_t http_config = {
-                .server_ip = HTTP_SERVER_IP,
-                .server_port = HTTP_SERVER_PORT,
-                .endpoint = HTTP_ENDPOINT,
-                .timeout_ms = HTTP_TIMEOUT_MS,
-                .max_retries = HTTP_MAX_RETRIES
-            };
-            
-            ret = http_client_init(&http_config);
-            if (ret != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to initialize HTTP client: %s", esp_err_to_name(ret));
-                wifi_manager_deinit();
-                csm_v2_deinit(&app->sensor_driver);
-                return ret;
-            }
-        }
-    }
+    // Initialize WiFi
+    wifi_manager_config_t wifi_config = {
+        .ssid = WIFI_SSID,
+        .password = WIFI_PASSWORD,
+        .max_retry = WIFI_MAX_RETRY,
+    };
+    http_client_config_t http_config = {
+        .server_ip = HTTP_SERVER_IP,
+        .server_port = HTTP_SERVER_PORT,
+        .endpoint = HTTP_ENDPOINT,
+        .timeout_ms = HTTP_TIMEOUT_MS,
+        .max_retries = HTTP_MAX_RETRIES,
+    };
+
+    wifi_manager_init(&wifi_config, NULL);
+    wifi_manager_connect();
+    http_client_init(&http_config);
+
+
     
     app->is_running = false;
     ESP_LOGI(TAG, "Soil monitoring application initialized");
     ESP_LOGI(TAG, "Device ID: %s", app->config.device_id);
-    if (config->enable_wifi) {
-        ESP_LOGI(TAG, "WiFi and HTTP communication enabled");
-    }
     return ESP_OK;
 }
 
@@ -215,21 +197,10 @@ esp_err_t soil_monitor_start(soil_monitor_app_t* app) {
         ESP_LOGE(TAG, "Invalid parameter");
         return ESP_ERR_INVALID_ARG;
     }
-    
     if (app->is_running) {
         ESP_LOGW(TAG, "Application already running");
         return ESP_OK;
     }
-    
-    // Start WiFi connection if enabled
-    if (app->config.enable_wifi) {
-        esp_err_t ret = wifi_manager_connect();
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to start WiFi connection: %s", esp_err_to_name(ret));
-            return ret;
-        }
-    }
-    
     app->is_running = true;
     
     // Create monitoring task
@@ -245,9 +216,6 @@ esp_err_t soil_monitor_start(soil_monitor_app_t* app) {
     if (task_created != pdPASS) {
         ESP_LOGE(TAG, "Failed to create monitoring task");
         app->is_running = false;
-        if (app->config.enable_wifi) {
-            wifi_manager_disconnect();
-        }
         return ESP_FAIL;
     }
     
@@ -310,6 +278,15 @@ esp_err_t soil_monitor_deinit(soil_monitor_app_t* app) {
     return ESP_OK;
 }
 
+
+
+
+
+
+
+
+
+// MARK: TODO
 esp_err_t soil_monitor_calibrate(soil_monitor_app_t* app) {
     if (app == NULL) {
         ESP_LOGE(TAG, "Invalid parameter");
