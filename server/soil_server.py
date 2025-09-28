@@ -10,7 +10,10 @@ class SoilDataHandler(BaseHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
 
             try:
+                print(f"Received Soil Data: {post_data.decode('utf-8')}")
                 data = json.loads(post_data.decode('utf-8'))
+                print(f"Received Soil Data: {data}")
+
                 timestamp = datetime.datetime.fromtimestamp(
                     data['timestamp'] / 1000)
                 print(f"[{timestamp}] Device: {data['device_id']}")
@@ -25,6 +28,7 @@ class SoilDataHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b'{"status": "success"}')
             except Exception as e:
                 print(f"Error processing data: {e}")
+                # TODO: Adjust server to give better response for invalid data packet format
                 self.send_response(400)
                 self.end_headers()
         else:
