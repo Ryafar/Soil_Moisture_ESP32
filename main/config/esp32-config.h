@@ -12,6 +12,9 @@
 #include "esp_adc/adc_oneshot.h"
 #include "credentials.h"
 
+// GPIO Pin Assignments
+#define LED_GPIO_NUM           GPIO_NUM_22
+
 // ============================================================================
 // ADC Configuration
 // ============================================================================
@@ -21,6 +24,12 @@
 #define SOIL_ADC_BITWIDTH       ADC_BITWIDTH_12
 #define SOIL_ADC_ATTENUATION    ADC_ATTEN_DB_11
 #define SOIL_ADC_VREF           3.3f
+
+#define BATTERY_ADC_UNIT        ADC_UNIT_2
+#define BATTERY_ADC_CHANNEL     ADC_CHANNEL_0
+#define BATTERY_ADC_BITWIDTH    ADC_BITWIDTH_12
+#define BATTERY_ADC_ATTENUATION ADC_ATTEN_DB_11
+#define BATTERY_ADC_VREF        3.3f
 
 // ============================================================================
 // Sensor Configuration
@@ -37,6 +46,17 @@
 #define SOIL_TASK_STACK_SIZE    4096
 #define SOIL_TASK_PRIORITY      5
 #define SOIL_TASK_NAME          "soil_monitor"
+#define SOIL_AUTO_CALIBRATION_ENABLE    0
+#define SOIL_CALIBRATION_TIMEOUT_MS     10000
+#define SOIL_CALIBRATION_SAMPLES        10
+
+#define BATTERY_MONITOR_TASK_STACK_SIZE    4096
+#define BATTERY_MONITOR_TASK_PRIORITY      5
+#define BATTERY_MONITOR_TASK_NAME          "battery_monitor"
+#define BATTERY_MONITOR_MEASUREMENT_INTERVAL_MS    1000
+#define BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD      3.3f
+#define BATTERY_MONITOR_VOLTAGE_SCALE_FACTOR      2.0f  // 1/1 voltage divider
+#define BATTERY_MONITOR_USE_DEEP_SLEEP_ON_LOW_BATTERY 1
 
 // ============================================================================
 // Logging Configuration
@@ -44,14 +64,6 @@
 
 #define SOIL_ENABLE_DETAILED_LOGGING    1
 #define SOIL_LOG_LEVEL          ESP_LOG_INFO
-
-// ============================================================================
-// Calibration Configuration
-// ============================================================================
-
-#define SOIL_AUTO_CALIBRATION_ENABLE    0
-#define SOIL_CALIBRATION_TIMEOUT_MS     10000
-#define SOIL_CALIBRATION_SAMPLES        10
 
 // ============================================================================
 // WiFi Configuration
