@@ -11,13 +11,17 @@ This project reads soil moisture levels using a capacitive moisture sensor conne
 - USB-C cable
 
 ## 🔌 Wiring
-| Sensor Pin | ESP32-C6 Pin | ESP32 Lolin Lite   |
-| ---------- | ------------ | ------------------ |
-| VCC        | 3.3V         | 3.3V               |
-| GND        | GND          | GND                |
-| AOUT       | GPIO5 (ADC)  | GPIO36 (5, ADC1_0) |
+| Sensor Pin | ESP32-C6 Pin | ESP32 Lolin Lite |
+| ---------- | ------------ | ---------------- |
+| VCC        | 3.3V         | 3.3V             |
+| GND        | GND          | GND              |
+| AOUT       | GPIO5 (ADC)  | Pin 5, ADC1_0    |
+| V_Bat/2    | -            | Pin 8, ADC1_3    |
 
 > ⚠️ Note: Ensure the sensor operates at 3.3V to avoid damaging the ESP32-C6.
+
+!!! caution
+    The ESP32 cannot use the ADC2 while wifi is being used!
 
 ## 🧑‍💻 Software Setup
 - ESP-IDF installed and configured

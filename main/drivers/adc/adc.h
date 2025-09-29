@@ -11,6 +11,7 @@
 
 #include "esp_adc/adc_oneshot.h"
 #include "esp_err.h"
+#include "adc_manager.h"
 
 /**
  * @brief ADC configuration structure

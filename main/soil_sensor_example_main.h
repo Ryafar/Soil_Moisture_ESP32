@@ -15,6 +15,7 @@
 
 // Application layer
 #include "application/soil_monitor_app.h"
+#include "application/battery_monitor_task.h"
 
 /**
  * @brief Main application entry point

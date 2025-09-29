@@ -39,18 +39,25 @@ esp_err_t csm_v2_init(csm_v2_driver_t* driver, const csm_v2_config_t* config) {
     // Copy configuration
     memcpy(&driver->config, config, sizeof(csm_v2_config_t));
     
-    // Initialize ADC HAL
-    adc_hal_config_t adc_config;
-    adc_hal_get_default_config(&adc_config, config->adc_unit, config->adc_channel);
-    
-    esp_err_t ret = adc_hal_init(&driver->adc_hal, &adc_config);
+    // Initialize shared ADC unit
+    esp_err_t ret = adc_shared_init(config->adc_unit);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize ADC HAL: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Failed to initialize shared ADC unit: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Add soil sensor channel to shared ADC
+    ret = adc_shared_add_channel(config->adc_unit, config->adc_channel, 
+                                 ADC_BITWIDTH_DEFAULT, ADC_ATTEN_DB_11, 3.3f);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to add soil sensor channel to shared ADC: %s", esp_err_to_name(ret));
+        adc_shared_deinit(config->adc_unit);
         return ret;
     }
     
     driver->is_initialized = true;
-    ESP_LOGI(TAG, "CSM V2 driver initialized successfully");
+    ESP_LOGI(TAG, "CSM V2 driver initialized successfully on ADC%d CH%d", 
+             config->adc_unit + 1, config->adc_channel);
     return ESP_OK;
 }
 
@@ -65,9 +72,16 @@ esp_err_t csm_v2_deinit(csm_v2_driver_t* driver) {
         return ESP_OK;
     }
     
-    esp_err_t ret = adc_hal_deinit(&driver->adc_hal);
+    // Remove soil sensor channel from shared ADC
+    esp_err_t ret = adc_shared_remove_channel(driver->config.adc_unit, driver->config.adc_channel);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to deinitialize ADC HAL: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Failed to remove soil sensor channel from shared ADC: %s", esp_err_to_name(ret));
+    }
+    
+    // Deinitialize shared ADC unit (will only actually deinit if ref count reaches 0)
+    ret = adc_shared_deinit(driver->config.adc_unit);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to deinitialize shared ADC: %s", esp_err_to_name(ret));
         return ret;
     }
     
@@ -87,7 +101,7 @@ esp_err_t csm_v2_read_voltage(csm_v2_driver_t* driver, float* voltage) {
         return ESP_ERR_INVALID_STATE;
     }
     
-    esp_err_t ret = adc_hal_read_voltage(&driver->adc_hal, voltage);
+    esp_err_t ret = adc_shared_read_voltage(driver->config.adc_unit, driver->config.adc_channel, voltage);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read voltage: %s", esp_err_to_name(ret));
         return ret;
@@ -112,7 +126,7 @@ esp_err_t csm_v2_read(csm_v2_driver_t* driver, csm_v2_reading_t* reading) {
     reading->timestamp = esp_utils_get_timestamp_ms();
     
     // Read raw ADC value
-    esp_err_t ret = adc_hal_read_raw(&driver->adc_hal, &reading->raw_adc);
+    esp_err_t ret = adc_shared_read_raw(driver->config.adc_unit, driver->config.adc_channel, &reading->raw_adc);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read raw ADC: %s", esp_err_to_name(ret));
         return ret;

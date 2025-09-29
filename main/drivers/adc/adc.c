@@ -3,8 +3,10 @@
  * @brief Hardware Abstraction Layer for ADC operations - Implementation
  */
 
-#include "adc_hal.h"
+#include "adc.h"
+
 #include "esp_log.h"
+#include "soc/soc_caps.h"
 #include <string.h>
 
 static const char* TAG = "ADC_HAL";
