@@ -15,4 +15,7 @@ build/
 # Others
 sdkconfig*
 
+# Data logs
+soil_data_logs/
+
 

@@ -4,25 +4,26 @@ import datetime
 import csv
 import os
 
+DATA_DIRECTORY = "./server/soil_data_logs/"
 
 class SoilDataHandler(BaseHTTPRequestHandler):
+
+    def log_message(self, format, *args):
+        """Override to ensure HTTP access logs are displayed"""
+        # print(f"{self.address_string()} - - [{self.log_date_time_string()}] {format % args}")
+        pass
+
     def do_POST(self):
         if self.path == '/soil-data':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
 
             try:
-                print(f"Received Soil Data: {post_data.decode('utf-8')}")
                 data = json.loads(post_data.decode('utf-8'))
-                print(f"Received Soil Data: {data}")
 
                 timestamp = datetime.datetime.fromtimestamp(
                     data['timestamp'] / 1000)
-                print(f"[{timestamp}] Device: {data['device_id']}")
-                print(f"  Moisture: {data['moisture_percent']:.1f}%")
-                print(f"  Voltage: {data['voltage']:.3f}V")
-                print(f"  Raw ADC: {data['raw_adc']}")
-                print("-" * 50)
+                print(f"[{timestamp}] device_id={data['device_id']}\tMoisture={data['moisture_percent']:.1f}%\tVoltage={data['voltage']:.3f}V\tRaw ADC={data['raw_adc']}")
 
                 # Save to CSV
                 self.save_to_csv(data, timestamp)
@@ -41,7 +42,10 @@ class SoilDataHandler(BaseHTTPRequestHandler):
 
     def save_to_csv(self, data, timestamp):
         """Save data to CSV file"""
-        filename = f"soil_data_{datetime.datetime.now().strftime('%Y%m%d')}.csv"
+        if not os.path.exists(DATA_DIRECTORY):
+            os.makedirs(DATA_DIRECTORY)
+
+        filename = f"{DATA_DIRECTORY}/soil_data_{datetime.datetime.now().strftime('%Y%m%d')}.csv"
         file_exists = os.path.isfile(filename)
 
         with open(filename, 'a', newline='') as csvfile:

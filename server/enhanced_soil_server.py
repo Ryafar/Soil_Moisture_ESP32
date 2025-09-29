@@ -13,6 +13,11 @@ class SoilDataHandler(BaseHTTPRequestHandler):
         self.data_dir = Path("soil_data")
         self.data_dir.mkdir(exist_ok=True)
         super().__init__(*args, **kwargs)
+    
+    def log_message(self, format, *args):
+        """Override to ensure HTTP access logs are displayed"""
+        # print(f"{self.address_string()} - - [{self.log_date_time_string()}] {format % args}")
+        pass
 
     def do_POST(self):
         if self.path == '/soil-data':
