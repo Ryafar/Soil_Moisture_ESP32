@@ -35,14 +35,7 @@ typedef struct {
     int max_buffered_packets; ///< Maximum packets to buffer offline
 } http_client_config_t;
 
-/**
- * @brief Buffered packet structure
- */
-typedef struct {
-    uint32_t timestamp;     ///< Packet timestamp
-    uint16_t payload_size;  ///< Size of JSON payload
-    char payload[];         ///< JSON payload data
-} http_buffered_packet_t;
+
 
 /**
  * @brief HTTP response status
