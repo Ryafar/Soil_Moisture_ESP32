@@ -38,7 +38,6 @@ typedef struct {
  * @brief Soil moisture sensor handle
  */
 typedef struct {
-    adc_hal_t adc_hal;                  ///< ADC hardware abstraction layer
     csm_v2_config_t config;             ///< Sensor configuration
     bool is_initialized;                ///< Initialization status
 } csm_v2_driver_t;
