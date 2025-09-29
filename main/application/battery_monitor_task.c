@@ -74,7 +74,7 @@ static http_response_status_t battery_send_reading_to_server(float voltage, cons
         return HTTP_RESPONSE_ERROR;
     }
 
-    http_response_status_t result = http_client_send_json(json_payload);
+    http_response_status_t result = http_client_send_json_buffered(json_payload);
     
     free(json_payload);
     return result;

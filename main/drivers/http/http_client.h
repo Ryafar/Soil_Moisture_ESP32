@@ -16,6 +16,8 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 #include <sys/time.h>
 #include <string.h>
 #include <stdint.h>
@@ -29,7 +31,18 @@ typedef struct {
     char endpoint[64];      ///< API endpoint path
     int timeout_ms;         ///< Request timeout in milliseconds
     int max_retries;        ///< Maximum retry attempts
+    bool enable_buffering;  ///< Enable offline packet buffering
+    int max_buffered_packets; ///< Maximum packets to buffer offline
 } http_client_config_t;
+
+/**
+ * @brief Buffered packet structure
+ */
+typedef struct {
+    uint32_t timestamp;     ///< Packet timestamp
+    uint16_t payload_size;  ///< Size of JSON payload
+    char payload[];         ///< JSON payload data
+} http_buffered_packet_t;
 
 /**
  * @brief HTTP response status
@@ -77,5 +90,34 @@ http_response_status_t http_client_test_connection(void);
  * @return int HTTP status code from last request
  */
 int http_client_get_last_status_code(void);
+
+/**
+ * @brief Send JSON payload with automatic buffering when server unavailable
+ * 
+ * @param json_payload JSON string to send
+ * @return http_response_status_t Response status
+ */
+http_response_status_t http_client_send_json_buffered(const char* json_payload);
+
+/**
+ * @brief Flush all buffered packets when server becomes available
+ * 
+ * @return esp_err_t ESP_OK on success, error code otherwise
+ */
+esp_err_t http_client_flush_buffered_packets(void);
+
+/**
+ * @brief Get count of buffered packets
+ * 
+ * @return int32_t Number of packets currently buffered
+ */
+int32_t http_client_get_buffered_packet_count(void);
+
+/**
+ * @brief Clear all buffered packets (for maintenance/reset)
+ * 
+ * @return esp_err_t ESP_OK on success, error code otherwise
+ */
+esp_err_t http_client_clear_buffered_packets(void);
 
 #endif // HTTP_CLIENT_H

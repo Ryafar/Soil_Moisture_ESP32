@@ -32,14 +32,6 @@
 #define BATTERY_ADC_VREF        3.3f
 
 // ============================================================================
-// Sensor Configuration
-// ============================================================================
-
-#define SOIL_DRY_VOLTAGE_DEFAULT    3.0f
-#define SOIL_WET_VOLTAGE_DEFAULT    1.0f
-#define SOIL_MEASUREMENT_INTERVAL_MS    1000
-
-// ============================================================================
 // Task Configuration
 // ============================================================================
 
@@ -49,11 +41,14 @@
 #define SOIL_AUTO_CALIBRATION_ENABLE    0
 #define SOIL_CALIBRATION_TIMEOUT_MS     10000
 #define SOIL_CALIBRATION_SAMPLES        10
+#define SOIL_DRY_VOLTAGE_DEFAULT    3.0f
+#define SOIL_WET_VOLTAGE_DEFAULT    1.0f
+#define SOIL_MEASUREMENT_INTERVAL_MS    10000
 
 #define BATTERY_MONITOR_TASK_STACK_SIZE    4096
 #define BATTERY_MONITOR_TASK_PRIORITY      5
 #define BATTERY_MONITOR_TASK_NAME          "battery_monitor"
-#define BATTERY_MONITOR_MEASUREMENT_INTERVAL_MS    1000
+#define BATTERY_MONITOR_MEASUREMENT_INTERVAL_MS    10000
 #define BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD      3.3f
 #define BATTERY_MONITOR_VOLTAGE_SCALE_FACTOR      2.0f  // 1/1 voltage divider
 #define BATTERY_MONITOR_USE_DEEP_SLEEP_ON_LOW_BATTERY 1
@@ -81,7 +76,9 @@
 #define HTTP_SERVER_PORT        8080
 #define HTTP_ENDPOINT           "/soil-data"
 #define HTTP_TIMEOUT_MS         5000
-#define HTTP_MAX_RETRIES        3
+#define HTTP_MAX_RETRIES        1
+#define HTTP_ENABLE_BUFFERING   1
+#define HTTP_MAX_BUFFERED_PACKETS  100
 
 #endif // ESP32_CONFIG_H
 

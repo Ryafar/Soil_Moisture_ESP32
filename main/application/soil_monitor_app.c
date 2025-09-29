@@ -79,7 +79,7 @@ static http_response_status_t soil_send_reading_to_server(const csm_v2_reading_t
         return HTTP_RESPONSE_ERROR;
     }
 
-    http_response_status_t result = http_client_send_json(json_payload);
+    http_response_status_t result = http_client_send_json_buffered(json_payload);
     
     free(json_payload);
     return result;
@@ -215,6 +215,8 @@ esp_err_t soil_monitor_init(soil_monitor_app_t* app, const soil_monitor_config_t
         .endpoint = HTTP_ENDPOINT,
         .timeout_ms = HTTP_TIMEOUT_MS,
         .max_retries = HTTP_MAX_RETRIES,
+        .enable_buffering = HTTP_ENABLE_BUFFERING,
+        .max_buffered_packets = HTTP_MAX_BUFFERED_PACKETS,
     };
 
     wifi_manager_init(&wifi_config, NULL);
