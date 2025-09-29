@@ -1,7 +1,7 @@
 #include "battery_monitor_task.h"
 #include "../config/esp32-config.h"
 #include "../utils/esp_utils.h"
-#include "../drivers/hal/adc_hal.h"
+#include "../drivers/adc/adc_manager.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_sleep.h"
@@ -18,19 +18,19 @@ static TaskHandle_t monitoring_task_handle = NULL;
 esp_err_t battery_monitor_init() {
     
     // Initialize shared ADC unit
-    esp_err_t ret = adc_hal_shared_init(BATTERY_ADC_UNIT);
+    esp_err_t ret = adc_shared_init(BATTERY_ADC_UNIT);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize shared ADC unit for battery monitoring: %s", esp_err_to_name(ret));
         return ret;
     }
     
     // Add battery monitoring channel to shared ADC
-    ret = adc_hal_shared_add_channel(BATTERY_ADC_UNIT, BATTERY_ADC_CHANNEL, 
+    ret = adc_shared_add_channel(BATTERY_ADC_UNIT, BATTERY_ADC_CHANNEL, 
                                      BATTERY_ADC_BITWIDTH, BATTERY_ADC_ATTENUATION, 
                                      BATTERY_ADC_VREF);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to add battery channel to shared ADC: %s", esp_err_to_name(ret));
-        adc_hal_shared_deinit(BATTERY_ADC_UNIT);
+        adc_shared_deinit(BATTERY_ADC_UNIT);
         return ret;
     }
 
@@ -40,13 +40,13 @@ esp_err_t battery_monitor_init() {
 
 esp_err_t battery_monitor_deinit() {
     // Remove battery channel from shared ADC
-    esp_err_t ret = adc_hal_shared_remove_channel(BATTERY_ADC_UNIT, BATTERY_ADC_CHANNEL);
+    esp_err_t ret = adc_shared_remove_channel(BATTERY_ADC_UNIT, BATTERY_ADC_CHANNEL);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to remove battery channel from shared ADC: %s", esp_err_to_name(ret));
     }
     
     // Deinitialize shared ADC unit (will only actually deinit if ref count reaches 0)
-    ret = adc_hal_shared_deinit(BATTERY_ADC_UNIT);
+    ret = adc_shared_deinit(BATTERY_ADC_UNIT);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to deinitialize shared ADC for battery monitoring: %s", esp_err_to_name(ret));
         return ret;
@@ -61,7 +61,7 @@ esp_err_t battery_monitor_read_voltage(float* voltage) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    esp_err_t ret = adc_hal_shared_read_voltage(BATTERY_ADC_UNIT, BATTERY_ADC_CHANNEL, voltage);
+    esp_err_t ret = adc_shared_read_voltage(BATTERY_ADC_UNIT, BATTERY_ADC_CHANNEL, voltage);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read battery voltage: %s", esp_err_to_name(ret));
         return ret;

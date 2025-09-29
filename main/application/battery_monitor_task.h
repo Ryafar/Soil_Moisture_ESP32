@@ -3,7 +3,7 @@
 
 #include "esp_err.h"
 
-#include "../drivers/hal/adc_hal.h"
+#include "../drivers/adc/adc_manager.h"
 #include "../drivers/led/led.h"
 #include "../config/esp32-config.h"
 

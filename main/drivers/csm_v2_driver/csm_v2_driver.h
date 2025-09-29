@@ -13,7 +13,7 @@
 #include "esp_err.h"
 
 #include "utils/esp_utils.h"
-#include "../hal/adc_hal.h"
+#include "../adc/adc_manager.h"
 
 /**
  * Parameters
