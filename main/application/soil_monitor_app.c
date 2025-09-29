@@ -49,6 +49,7 @@ static char* create_soil_json_payload(const csm_v2_reading_t* reading, const cha
     cJSON *moisture = cJSON_CreateNumber(reading->moisture_percent);
     cJSON *raw_adc = cJSON_CreateNumber(reading->raw_adc);
     cJSON *device_id_json = cJSON_CreateString(device_id);
+    cJSON *data_type = cJSON_CreateString("soil");
 
     cJSON_AddItemToObject(json, "timestamp", timestamp);
     cJSON_AddItemToObject(json, "iso_timestamp", iso_timestamp);
@@ -56,6 +57,7 @@ static char* create_soil_json_payload(const csm_v2_reading_t* reading, const cha
     cJSON_AddItemToObject(json, "moisture_percent", moisture);
     cJSON_AddItemToObject(json, "raw_adc", raw_adc);
     cJSON_AddItemToObject(json, "device_id", device_id_json);
+    cJSON_AddItemToObject(json, "type", data_type);
 
     char *json_string = cJSON_Print(json);
     cJSON_Delete(json);

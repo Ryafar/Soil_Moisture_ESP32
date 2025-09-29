@@ -23,10 +23,19 @@ class SoilDataHandler(BaseHTTPRequestHandler):
 
                 timestamp = datetime.datetime.fromtimestamp(
                     data['timestamp'] / 1000)
-                print(f"[{timestamp}] device_id={data['device_id']}\tMoisture={data['moisture_percent']:.1f}%\tVoltage={data['voltage']:.3f}V\tRaw ADC={data['raw_adc']}")
+                
+                # Handle different data types
+                data_type = data.get('type', 'soil')  # Default to 'soil' for backward compatibility
+                
+                if data_type == 'soil':
+                    print(f"[{timestamp}] SOIL - device_id={data['device_id']}\tMoisture={data['moisture_percent']:.1f}%\tVoltage={data['voltage']:.3f}V\tRaw ADC={data['raw_adc']}")
+                elif data_type == 'battery':
+                    print(f"[{timestamp}] BATTERY - device_id={data['device_id']}\tVoltage={data['voltage']:.3f}V")
+                else:
+                    print(f"[{timestamp}] UNKNOWN TYPE({data_type}) - device_id={data['device_id']}\tVoltage={data['voltage']:.3f}V")
 
                 # Save to CSV
-                self.save_to_csv(data, timestamp)
+                self.save_to_csv(data, timestamp, data_type)
 
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
@@ -40,17 +49,36 @@ class SoilDataHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-    def save_to_csv(self, data, timestamp):
-        """Save data to CSV file"""
+    def save_to_csv(self, data, timestamp, data_type='soil'):
+        """Save data to CSV file based on data type"""
         if not os.path.exists(DATA_DIRECTORY):
             os.makedirs(DATA_DIRECTORY)
 
-        filename = f"{DATA_DIRECTORY}/soil_data_{datetime.datetime.now().strftime('%Y%m%d')}.csv"
-        file_exists = os.path.isfile(filename)
+        # Create separate CSV files for different data types
+        if data_type == 'battery':
+            filename = f"{DATA_DIRECTORY}/battery_data_{datetime.datetime.now().strftime('%Y%m%d')}.csv"
+            fieldnames = ['timestamp', 'device_id', 'voltage', 'data_type']
+            row_data = {
+                'timestamp': timestamp.isoformat(),
+                'device_id': data['device_id'],
+                'voltage': data['voltage'],
+                'data_type': data_type
+            }
+        else:  # soil or unknown types
+            filename = f"{DATA_DIRECTORY}/soil_data_{datetime.datetime.now().strftime('%Y%m%d')}.csv"
+            fieldnames = ['timestamp', 'device_id', 'moisture_percent', 'voltage', 'raw_adc', 'data_type']
+            row_data = {
+                'timestamp': timestamp.isoformat(),
+                'device_id': data['device_id'],
+                'moisture_percent': data.get('moisture_percent', 0),
+                'voltage': data['voltage'],
+                'raw_adc': data.get('raw_adc', 0),
+                'data_type': data_type
+            }
 
+        file_exists = os.path.isfile(filename)
+        
         with open(filename, 'a', newline='') as csvfile:
-            fieldnames = ['timestamp', 'device_id',
-                          'moisture_percent', 'voltage', 'raw_adc']
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
             # Write header if file is new
@@ -58,13 +86,7 @@ class SoilDataHandler(BaseHTTPRequestHandler):
                 writer.writeheader()
 
             # Write data
-            writer.writerow({
-                'timestamp': timestamp.isoformat(),
-                'device_id': data['device_id'],
-                'moisture_percent': data['moisture_percent'],
-                'voltage': data['voltage'],
-                'raw_adc': data['raw_adc']
-            })
+            writer.writerow(row_data)
 
 
 if __name__ == '__main__':
