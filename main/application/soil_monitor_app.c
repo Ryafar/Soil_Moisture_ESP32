@@ -7,11 +7,13 @@
 #include "../config/esp32-config.h"
 #include "../utils/esp_utils.h"
 #include "../utils/ntp_time.h"
+#include "../drivers/influxdb/influxdb_client.h"
+#include "influx_sender.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "cJSON.h"
 #include <string.h>
 
 static const char* TAG = "SOIL_MONITOR_APP";
@@ -20,88 +22,37 @@ static const char* TAG = "SOIL_MONITOR_APP";
 static TaskHandle_t monitoring_task_handle = NULL;
 
 /**
- * @brief Create JSON payload for soil sensor data
+ * @brief Send soil sensor reading to InfluxDB
  */
-static char* create_soil_json_payload(const csm_v2_reading_t* reading, const char* device_id) {
-    cJSON *json = cJSON_CreateObject();
-    if (json == NULL) {
-        return NULL;
+static influxdb_response_status_t soil_send_reading_to_influxdb(const csm_v2_reading_t* reading, const char* device_id) {
+    if (reading == NULL || device_id == NULL) {
+        return INFLUXDB_RESPONSE_ERROR;
     }
 
+    influxdb_soil_data_t influx_data;
+    
     // Use NTP timestamp if available, otherwise fallback to system timestamp
     uint64_t timestamp_ms;
-    char iso_time_str[64];
-    
     if (ntp_time_is_synced()) {
         timestamp_ms = ntp_time_get_timestamp_ms();
-        esp_err_t ret = ntp_time_get_iso_string(iso_time_str, sizeof(iso_time_str));
-        if (ret != ESP_OK) {
-            strcpy(iso_time_str, "1970-01-01T00:00:00+00:00");
-        }
     } else {
         timestamp_ms = esp_utils_get_timestamp_ms();
-        strcpy(iso_time_str, "1970-01-01T00:00:00+00:00");  // Not synced
     }
-
-    cJSON *timestamp = cJSON_CreateNumber((double)timestamp_ms);
-    cJSON *iso_timestamp = cJSON_CreateString(iso_time_str);
-    cJSON *voltage = cJSON_CreateNumber(reading->voltage);
-    cJSON *moisture = cJSON_CreateNumber(reading->moisture_percent);
-    cJSON *raw_adc = cJSON_CreateNumber(reading->raw_adc);
-    cJSON *device_id_json = cJSON_CreateString(device_id);
-    cJSON *data_type = cJSON_CreateString("soil");
-
-    cJSON_AddItemToObject(json, "timestamp", timestamp);
-    cJSON_AddItemToObject(json, "iso_timestamp", iso_timestamp);
-    cJSON_AddItemToObject(json, "voltage", voltage);
-    cJSON_AddItemToObject(json, "moisture_percent", moisture);
-    cJSON_AddItemToObject(json, "raw_adc", raw_adc);
-    cJSON_AddItemToObject(json, "device_id", device_id_json);
-    cJSON_AddItemToObject(json, "type", data_type);
-
-    char *json_string = cJSON_Print(json);
-    cJSON_Delete(json);
-
-    return json_string;
-}
-
-/**
- * @brief Send soil sensor reading to HTTP server
- */
-static http_response_status_t soil_send_reading_to_server(const csm_v2_reading_t* reading, const char* device_id) {
-    if (reading == NULL || device_id == NULL) {
-        return HTTP_RESPONSE_ERROR;
-    }
-
-    char* json_payload = create_soil_json_payload(reading, device_id);
-    if (json_payload == NULL) {
-        ESP_LOGE(TAG, "Failed to create JSON payload");
-        return HTTP_RESPONSE_ERROR;
-    }
-
-    http_response_status_t result = http_client_send_json_buffered(json_payload);
     
-    free(json_payload);
-    return result;
+    // Convert milliseconds to nanoseconds for InfluxDB
+    influx_data.timestamp_ns = timestamp_ms * 1000000ULL;
+    influx_data.voltage = reading->voltage;
+    influx_data.moisture_percent = reading->moisture_percent;
+    influx_data.raw_adc = reading->raw_adc;
+    strncpy(influx_data.device_id, device_id, sizeof(influx_data.device_id) - 1);
+    influx_data.device_id[sizeof(influx_data.device_id) - 1] = '\0';
+
+    // Route via sender task to avoid stack pressure in this task
+    influx_sender_init();
+    return influx_sender_enqueue_soil(&influx_data);
 }
 
-// WiFi status callback
-static void wifi_status_callback(wifi_status_t status, const char* ip_addr) {
-    switch (status) {
-        case WIFI_STATUS_CONNECTED:
-            ESP_LOGI(TAG, "WiFi Connected! IP: %s", ip_addr);
-            break;
-        case WIFI_STATUS_DISCONNECTED:
-            ESP_LOGI(TAG, "WiFi Disconnected");
-            break;
-        case WIFI_STATUS_CONNECTING:
-            ESP_LOGI(TAG, "WiFi Connecting...");
-            break;
-        case WIFI_STATUS_ERROR:
-            ESP_LOGE(TAG, "WiFi Connection Error");
-            break;
-    }
-}
+
 
 // NTP sync callback
 static void ntp_sync_callback(ntp_status_t status, const char* time_str) {
@@ -128,6 +79,30 @@ static void soil_monitoring_task(void* pvParameters) {
     csm_v2_reading_t reading;
     
     ESP_LOGI(TAG, "Soil monitoring task started");
+
+    // One-time setup on larger stack: NTP sync and optional Influx connectivity test
+    ESP_LOGI(TAG, "Initializing NTP time synchronization...");
+    esp_err_t ntp_ret = ntp_time_init(ntp_sync_callback);
+    if (ntp_ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to initialize NTP: %s", esp_err_to_name(ntp_ret));
+    } else {
+        ESP_LOGI(TAG, "NTP initialization started, waiting for sync...");
+        ntp_ret = ntp_time_wait_for_sync(15000);  // 15 seconds timeout
+        if (ntp_ret == ESP_OK) {
+            ESP_LOGI(TAG, "NTP synchronized successfully!");
+        } else {
+            ESP_LOGW(TAG, "NTP sync timeout, will continue syncing in background");
+        }
+    }
+
+    // Optional: verify Influx connectivity (uses TLS/HTTP)
+    ESP_LOGI(TAG, "Testing InfluxDB connection from monitoring task...");
+    influxdb_response_status_t test_result = influxdb_test_connection();
+    if (test_result == INFLUXDB_RESPONSE_OK) {
+        ESP_LOGI(TAG, "InfluxDB connection test successful!");
+    } else {
+        ESP_LOGW(TAG, "InfluxDB connection test failed (status: %d), continuing...", test_result);
+    }
     
     while (app->is_running) {
         esp_err_t ret = csm_v2_read(&app->sensor_driver, &reading);
@@ -137,15 +112,15 @@ static void soil_monitoring_task(void* pvParameters) {
                          reading.moisture_percent, reading.voltage, reading.raw_adc);
             }
             
-            // Send data via HTTP if enabled and WiFi is connected
+            // Send data to InfluxDB if enabled and WiFi is connected
             if (app->config.enable_http_sending && wifi_manager_is_connected()) {
-                http_response_status_t http_status = soil_send_reading_to_server(&reading, app->config.device_id);
-                if (http_status == HTTP_RESPONSE_OK) {
+                influxdb_response_status_t influx_status = soil_send_reading_to_influxdb(&reading, app->config.device_id);
+                if (influx_status == INFLUXDB_RESPONSE_OK) {
                     if (app->config.enable_logging) {
-                        ESP_LOGD(TAG, "Data sent successfully to server");
+                        ESP_LOGI(TAG, "Soil data sent successfully to InfluxDB");
                     }
                 } else {
-                    ESP_LOGW(TAG, "Failed to send data to server (status: %d)", http_status);
+                    ESP_LOGW(TAG, "Failed to send soil data to InfluxDB (status: %d)", influx_status);
                 }
             }
         } else {
@@ -209,36 +184,68 @@ esp_err_t soil_monitor_init(soil_monitor_app_t* app, const soil_monitor_config_t
         .password = WIFI_PASSWORD,
         .max_retry = WIFI_MAX_RETRY,
     };
-    http_client_config_t http_config = {
-        .server_ip = HTTP_SERVER_IP,
-        .server_port = HTTP_SERVER_PORT,
-        .endpoint = HTTP_ENDPOINT,
+    influxdb_client_config_t influx_config = {
+        .port = INFLUXDB_PORT,
         .timeout_ms = HTTP_TIMEOUT_MS,
         .max_retries = HTTP_MAX_RETRIES,
-        .enable_buffering = HTTP_ENABLE_BUFFERING,
-        .max_buffered_packets = HTTP_MAX_BUFFERED_PACKETS,
     };
+    
+    // Copy configuration strings
+    strncpy(influx_config.server, INFLUXDB_SERVER, sizeof(influx_config.server) - 1);
+    influx_config.server[sizeof(influx_config.server) - 1] = '\0';
+    
+    strncpy(influx_config.bucket, INFLUXDB_BUCKET, sizeof(influx_config.bucket) - 1);
+    influx_config.bucket[sizeof(influx_config.bucket) - 1] = '\0';
+    
+    strncpy(influx_config.org, INFLUXDB_ORG, sizeof(influx_config.org) - 1);
+    influx_config.org[sizeof(influx_config.org) - 1] = '\0';
+    
+    strncpy(influx_config.token, INFLUXDB_TOKEN, sizeof(influx_config.token) - 1);
+    influx_config.token[sizeof(influx_config.token) - 1] = '\0';
+    
+    strncpy(influx_config.endpoint, INFLUXDB_ENDPOINT, sizeof(influx_config.endpoint) - 1);
+    influx_config.endpoint[sizeof(influx_config.endpoint) - 1] = '\0';
 
     wifi_manager_init(&wifi_config, NULL);
     wifi_manager_connect();
-    http_client_init(&http_config);
-
-    // Initialize NTP time synchronization for Switzerland
-    ESP_LOGI(TAG, "Initializing NTP time synchronization...");
-    esp_err_t ntp_ret = ntp_time_init(ntp_sync_callback);
-    if (ntp_ret != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to initialize NTP: %s", esp_err_to_name(ntp_ret));
-        ESP_LOGW(TAG, "Continuing without NTP sync - timestamps will be inaccurate");
-    } else {
-        ESP_LOGI(TAG, "NTP initialization started, waiting for sync...");
-        // Wait for NTP sync with timeout (optional)
-        ntp_ret = ntp_time_wait_for_sync(15000);  // 15 seconds timeout
-        if (ntp_ret == ESP_OK) {
-            ESP_LOGI(TAG, "NTP synchronized successfully!");
-        } else {
-            ESP_LOGW(TAG, "NTP sync timeout, will continue syncing in background");
-        }
+    
+    // Wait for WiFi connection and log network info
+    ESP_LOGI(TAG, "Waiting for WiFi connection...");
+    int wifi_wait_count = 0;
+    while (!wifi_manager_is_connected() && wifi_wait_count < 30) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        wifi_wait_count++;
+        ESP_LOGI(TAG, "WiFi connection attempt %d/30", wifi_wait_count);
     }
+    
+    if (wifi_manager_is_connected()) {
+        // Get and log IP information
+        esp_netif_ip_info_t ip_info;
+        esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        if (netif != NULL && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+            ESP_LOGI(TAG, "=== NETWORK DIAGNOSTICS ===");
+            ESP_LOGI(TAG, "ESP32 IP: " IPSTR, IP2STR(&ip_info.ip));
+            ESP_LOGI(TAG, "Gateway: " IPSTR, IP2STR(&ip_info.gw));
+            ESP_LOGI(TAG, "Netmask: " IPSTR, IP2STR(&ip_info.netmask));
+            ESP_LOGI(TAG, "Target Server: %s:%d", INFLUXDB_SERVER, INFLUXDB_PORT);
+            ESP_LOGI(TAG, "========================");
+        }
+    } else {
+        ESP_LOGE(TAG, "WiFi connection failed after 30 seconds!");
+        return ESP_FAIL;
+    }
+    
+    // Initialize InfluxDB client (HTTP/TLS) and sender task
+    esp_err_t influx_ret = influxdb_client_init(&influx_config);
+    if (influx_ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize InfluxDB client: %s", esp_err_to_name(influx_ret));
+        return influx_ret;
+    }
+
+    // Ensure sender is ready (idempotent)
+    influx_sender_init();
+    
+    // Heavy operations moved to task above to avoid main stack overflow
 
 
     
@@ -259,14 +266,15 @@ esp_err_t soil_monitor_start(soil_monitor_app_t* app) {
     }
     app->is_running = true;
     
-    // Create monitoring task
-    BaseType_t task_created = xTaskCreate(
+    // Create monitoring task with larger stack to handle TLS/HTTP
+    BaseType_t task_created = xTaskCreatePinnedToCore(
         soil_monitoring_task,
         "soil_monitor",
-        4096,
+        SOIL_TASK_STACK_SIZE,
         app,
-        5,
-        &monitoring_task_handle
+        SOIL_TASK_PRIORITY,
+        &monitoring_task_handle,
+        0 /* pin to core 0 */
     );
     
     if (task_created != pdPASS) {
@@ -313,9 +321,9 @@ esp_err_t soil_monitor_deinit(soil_monitor_app_t* app) {
         ESP_LOGE(TAG, "Failed to stop application: %s", esp_err_to_name(ret));
     }
     
-    // Deinitialize HTTP client if enabled
+    // Deinitialize InfluxDB client if enabled
     if (app->config.enable_http_sending) {
-        http_client_deinit();
+        influxdb_client_deinit();
     }
     
     // Deinitialize WiFi if enabled

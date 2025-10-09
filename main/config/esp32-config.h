@@ -35,7 +35,7 @@
 // Task Configuration
 // ============================================================================
 
-#define SOIL_TASK_STACK_SIZE    4096
+#define SOIL_TASK_STACK_SIZE    (4 * 1024)
 #define SOIL_TASK_PRIORITY      5
 #define SOIL_TASK_NAME          "soil_monitor"
 #define SOIL_AUTO_CALIBRATION_ENABLE    0
@@ -43,12 +43,12 @@
 #define SOIL_CALIBRATION_SAMPLES        10
 #define SOIL_DRY_VOLTAGE_DEFAULT    3.0f
 #define SOIL_WET_VOLTAGE_DEFAULT    1.0f
-#define SOIL_MEASUREMENT_INTERVAL_MS    10000
+#define SOIL_MEASUREMENT_INTERVAL_MS    10 * 1000
 
-#define BATTERY_MONITOR_TASK_STACK_SIZE    4096
+#define BATTERY_MONITOR_TASK_STACK_SIZE    (4 * 1024)
 #define BATTERY_MONITOR_TASK_PRIORITY      5
 #define BATTERY_MONITOR_TASK_NAME          "battery_monitor"
-#define BATTERY_MONITOR_MEASUREMENT_INTERVAL_MS    10000
+#define BATTERY_MONITOR_MEASUREMENT_INTERVAL_MS    10 * 1000
 #define BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD      3.3f
 #define BATTERY_MONITOR_VOLTAGE_SCALE_FACTOR      2.0f  // 1/1 voltage divider
 #define BATTERY_MONITOR_USE_DEEP_SLEEP_ON_LOW_BATTERY 1
@@ -69,14 +69,18 @@
 #define WIFI_FAIL_BIT           BIT1
 
 // ============================================================================
-// HTTP Configuration
+// InfluxDB Configuration
 // ============================================================================
 
-#define HTTP_SERVER_IP          "192.168.1.100"    // Your PC's IP address
-#define HTTP_SERVER_PORT        8080
-#define HTTP_ENDPOINT           "/soil-data"
-#define HTTP_TIMEOUT_MS         5000
-#define HTTP_MAX_RETRIES        1
+#define INFLUXDB_SERVER         "data.michipi.mywire.org"
+#define INFLUXDB_PORT           443                 // HTTPS port (nginx reverse proxy)
+#define INFLUXDB_USE_HTTPS      1                   // HTTPS required for nginx proxy
+#define INFLUXDB_BUCKET         "soil-test"
+#define INFLUXDB_ORG            "Michipi"           // Note: org is case-sensitive and must match InfluxDB exactly
+#define INFLUXDB_ENDPOINT       "/api/v2/write"
+
+#define HTTP_TIMEOUT_MS         15000               // Increased timeout to 15s
+#define HTTP_MAX_RETRIES        3                   // More retries
 #define HTTP_ENABLE_BUFFERING   1
 #define HTTP_MAX_BUFFERED_PACKETS  100
 

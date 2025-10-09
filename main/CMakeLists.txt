@@ -7,15 +7,17 @@ idf_component_register(SRCS "soil_sensor_example_main.c"
                             "drivers/adc/adc_manager.c"
                             "drivers/csm_v2_driver/csm_v2_driver.c"
                             "application/soil_monitor_app.c"
+                            "application/influx_sender.c"
                             "drivers/wifi/wifi_manager.c"
                             "drivers/http/http_client.c"
                             "drivers/http/http_buffer.c"
+                            "drivers/influxdb/influxdb_client.c"
                             "utils/esp_utils.c"
                             "utils/ntp_time.c"
                             "application/battery_monitor_task.c"
                             "drivers/led/led.c"
                        INCLUDE_DIRS "."
-                       REQUIRES driver esp_adc esp_wifi esp_netif nvs_flash esp_event esp_http_client json esp_timer lwip)
+                       REQUIRES driver esp_adc esp_wifi esp_netif nvs_flash esp_event esp_http_client esp-tls json esp_timer lwip)
 
 
 #######################
@@ -48,3 +50,11 @@ idf_component_register(SRCS "soil_sensor_example_main.c"
 #                              "drivers/led/led.c"
 #                        INCLUDE_DIRS "."
 #                        REQUIRES driver esp_adc esp_wifi esp_netif nvs_flash esp_event esp_http_client json esp_timer)
+
+# For testing InfluxDB connection and data transmission
+# idf_component_register(SRCS "01_testing/influx_db_main.c"
+#                           "drivers/wifi/wifi_manager.c"
+#                           "drivers/influxdb/influxdb_client.c"
+#                           "utils/esp_utils.c"
+#                        INCLUDE_DIRS "."
+#                        REQUIRES driver esp_adc esp_wifi esp_netif nvs_flash esp_event esp_http_client esp-tls json esp_timer lwip)

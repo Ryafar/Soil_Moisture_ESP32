@@ -78,6 +78,13 @@ http_response_status_t http_client_send_json(const char* json_payload);
 http_response_status_t http_client_test_connection(void);
 
 /**
+ * @brief Simple connectivity check by attempting to reach the server
+ * 
+ * @return bool true if server is reachable, false otherwise
+ */
+bool http_client_ping_server(void);
+
+/**
  * @brief Get the last HTTP status code
  * 
  * @return int HTTP status code from last request

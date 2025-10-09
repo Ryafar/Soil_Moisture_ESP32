@@ -5,6 +5,10 @@
 
 #include "http_client.h"
 #include "http_buffer.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <errno.h>
 
 static const char *TAG = "HTTPClient";
 
@@ -119,17 +123,24 @@ http_response_status_t http_client_send_json(const char* json_payload)
                 result = HTTP_RESPONSE_ERROR;
             }
         } else if (err == ESP_ERR_TIMEOUT) {
-            ESP_LOGW(TAG, "HTTP request timeout");
+            ESP_LOGW(TAG, "HTTP request timeout (retry %d/%d)", retry_count, s_config.max_retries);
             result = HTTP_RESPONSE_TIMEOUT;
+        } else if (err == ESP_ERR_HTTP_EAGAIN) {
+            ESP_LOGW(TAG, "HTTP EAGAIN - server busy or connection issue (retry %d/%d)", retry_count, s_config.max_retries);
+            result = HTTP_RESPONSE_TIMEOUT;
+            // Recreate client connection on EAGAIN error
+            esp_http_client_close(s_persistent_client);
         } else {
-            ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
+            ESP_LOGE(TAG, "HTTP POST request failed: %s (retry %d/%d)", esp_err_to_name(err), retry_count, s_config.max_retries);
             result = HTTP_RESPONSE_NO_CONNECTION;
+            // Close and recreate connection for other errors too
+            esp_http_client_close(s_persistent_client);
         }
 
         retry_count++;
         if (retry_count <= s_config.max_retries) {
-            ESP_LOGW(TAG, "Retrying HTTP request (%d/%d)", retry_count, s_config.max_retries);
-            vTaskDelay(pdMS_TO_TICKS(1000)); // Wait 1 second before retry
+            ESP_LOGW(TAG, "Retrying HTTP request (%d/%d) in 2 seconds...", retry_count, s_config.max_retries);
+            vTaskDelay(pdMS_TO_TICKS(2000)); // Wait 2 seconds before retry (increased)
         }
     }
     
@@ -250,4 +261,51 @@ int32_t http_client_get_buffered_packet_count(void)
 esp_err_t http_client_clear_buffered_packets(void)
 {
     return http_buffer_clear_all();
+}
+
+bool http_client_ping_server(void)
+{
+    if (!s_initialized) {
+        return false;
+    }
+
+    ESP_LOGI(TAG, "Testing connectivity to %s:%d", s_config.server_ip, s_config.server_port);
+    
+    // First try a simple socket connection test
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        ESP_LOGE(TAG, "Socket creation failed");
+        return false;
+    }
+    
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(s_config.server_port);
+    
+    // Convert IP string to binary format
+    if (inet_pton(AF_INET, s_config.server_ip, &server_addr.sin_addr) <= 0) {
+        ESP_LOGE(TAG, "Invalid IP address: %s", s_config.server_ip);
+        close(sock);
+        return false;
+    }
+    
+    // Set socket timeout
+    struct timeval timeout;
+    timeout.tv_sec = 5;  // 5 second timeout
+    timeout.tv_usec = 0;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    
+    // Try to connect
+    int connect_result = connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    close(sock);
+    
+    if (connect_result < 0) {
+        ESP_LOGW(TAG, "Socket connection to %s:%d failed: errno %d (%s)", 
+                 s_config.server_ip, s_config.server_port, errno, strerror(errno));
+        return false;
+    } else {
+        ESP_LOGI(TAG, "Socket connection to %s:%d successful!", s_config.server_ip, s_config.server_port);
+        return true;
+    }
 }
