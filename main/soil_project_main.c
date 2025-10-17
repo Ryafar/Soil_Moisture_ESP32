@@ -1,12 +1,12 @@
 /**
- * @file soil-sensor-example-main.c
+ * @file soil_project_main.c
  * @brief Main application entry point for Soil Moisture Sensor project
  * 
  * This file demonstrates the usage of the modular soil moisture sensor driver
  * and application layer.
  */
 
-#include "soil_sensor_example_main.h"
+#include "soil_project_main.h"
 #include "esp_log.h"
 
 static const char *TAG = "MAIN";

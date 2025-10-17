@@ -2,7 +2,7 @@
 #   MAIN Application   #
 ########################
 
-idf_component_register(SRCS "soil_sensor_example_main.c"
+idf_component_register(SRCS "soil_project_main.c"
                             "drivers/adc/adc.c"
                             "drivers/adc/adc_manager.c"
                             "drivers/csm_v2_driver/csm_v2_driver.c"

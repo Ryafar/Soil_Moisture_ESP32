@@ -1,10 +1,10 @@
 /**
- * @file soil-sensor-example-main.h
+ * @file soil_project_main.h
  * @brief Main application header for Soil Moisture Sensor project
  */
 
-#ifndef SOIL_SENSOR_EXAMPLE_MAIN_H
-#define SOIL_SENSOR_EXAMPLE_MAIN_H
+#ifndef SOIL_PROJECT_MAIN_H
+#define SOIL_PROJECT_MAIN_H
 
 #include <stdio.h>
 #include "esp_system.h"
@@ -22,6 +22,6 @@
  */
 void app_main(void);
 
-#endif // SOIL_SENSOR_EXAMPLE_MAIN_H
+#endif // SOIL_PROJECT_MAIN_H
 
 
