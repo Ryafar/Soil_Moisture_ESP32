@@ -27,6 +27,7 @@ typedef struct {
     bool enable_wifi;                   ///< Enable WiFi connectivity
     bool enable_http_sending;           ///< Enable HTTP data transmission
     char device_id[32];                 ///< Unique device identifier
+    uint32_t measurements_per_cycle;    ///< Number of measurements before task completion (0 = infinite)
 } soil_monitor_config_t;
 
 /**
@@ -57,10 +58,26 @@ esp_err_t soil_monitor_init(soil_monitor_app_t* app, const soil_monitor_config_t
 /**
  * @brief Start the soil monitoring application
  * 
+ * Creates monitoring task that will run for measurements_per_cycle iterations.
+ * If measurements_per_cycle is 0, runs indefinitely.
+ * Use soil_monitor_wait_for_completion() to wait for task to finish.
+ * 
  * @param app Pointer to application handle
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
 esp_err_t soil_monitor_start(soil_monitor_app_t* app);
+
+/**
+ * @brief Wait for soil monitoring task to complete all measurements
+ * 
+ * Blocks until the monitoring task has finished all configured measurements.
+ * Only returns when measurements_per_cycle > 0, otherwise blocks indefinitely.
+ * 
+ * @param app Pointer to application handle
+ * @param timeout_ms Maximum time to wait in milliseconds (0 = wait forever)
+ * @return esp_err_t ESP_OK if completed, ESP_ERR_TIMEOUT if timed out
+ */
+esp_err_t soil_monitor_wait_for_completion(soil_monitor_app_t* app, uint32_t timeout_ms);
 
 /**
  * @brief Stop the soil monitoring application

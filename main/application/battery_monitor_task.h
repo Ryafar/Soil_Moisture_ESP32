@@ -10,8 +10,9 @@
 esp_err_t battery_monitor_init();
 esp_err_t battery_monitor_deinit();
 esp_err_t battery_monitor_read_voltage(float* voltage);
-esp_err_t battery_monitor_start();
+esp_err_t battery_monitor_start(uint32_t measurements_per_cycle);
 esp_err_t battery_monitor_stop();
+esp_err_t battery_monitor_wait_for_completion(uint32_t timeout_ms);
 void battery_monitor_task(void* pvParameters);
 
 

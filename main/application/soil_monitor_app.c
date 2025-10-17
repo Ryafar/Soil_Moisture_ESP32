@@ -52,58 +52,17 @@ static influxdb_response_status_t soil_send_reading_to_influxdb(const csm_v2_rea
     return influx_sender_enqueue_soil(&influx_data);
 }
 
-
-
-// NTP sync callback
-static void ntp_sync_callback(ntp_status_t status, const char* time_str) {
-    switch (status) {
-        case NTP_STATUS_SYNCED:
-            ESP_LOGI(TAG, "NTP Time Synchronized! Swiss time: %s", time_str ? time_str : "N/A");
-            break;
-        case NTP_STATUS_FAILED:
-            ESP_LOGW(TAG, "NTP Time Synchronization Failed");
-            break;
-        case NTP_STATUS_SYNCING:
-            ESP_LOGI(TAG, "NTP Time Synchronizing...");
-            break;
-        default:
-            break;
-    }
-}
-
 /**
  * @brief Soil monitoring task
  */
 static void soil_monitoring_task(void* pvParameters) {
     soil_monitor_app_t* app = (soil_monitor_app_t*)pvParameters;
     csm_v2_reading_t reading;
+    uint32_t measurement_count = 0;
     
     ESP_LOGI(TAG, "Soil monitoring task started");
-
-    // One-time setup on larger stack: NTP sync and optional Influx connectivity test
-    ESP_LOGI(TAG, "Initializing NTP time synchronization...");
-    esp_err_t ntp_ret = ntp_time_init(ntp_sync_callback);
-    if (ntp_ret != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to initialize NTP: %s", esp_err_to_name(ntp_ret));
-    } else {
-        ESP_LOGI(TAG, "NTP initialization started, waiting for sync...");
-        ntp_ret = ntp_time_wait_for_sync(15000);  // 15 seconds timeout
-        if (ntp_ret == ESP_OK) {
-            ESP_LOGI(TAG, "NTP synchronized successfully!");
-        } else {
-            ESP_LOGW(TAG, "NTP sync timeout, will continue syncing in background");
-        }
-    }
-
-    // Optional: verify Influx connectivity (uses TLS/HTTP)
-    ESP_LOGI(TAG, "Testing InfluxDB connection from monitoring task...");
-    influxdb_response_status_t test_result = influxdb_test_connection();
-    if (test_result == INFLUXDB_RESPONSE_OK) {
-        ESP_LOGI(TAG, "InfluxDB connection test successful!");
-    } else {
-        ESP_LOGW(TAG, "InfluxDB connection test failed (status: %d), continuing...", test_result);
-    }
     
+    // Measurement loop - runs until configured count reached or infinite if measurements_per_cycle == 0
     while (app->is_running) {
         esp_err_t ret = csm_v2_read(&app->sensor_driver, &reading);
         if (ret == ESP_OK) {
@@ -127,10 +86,19 @@ static void soil_monitoring_task(void* pvParameters) {
             ESP_LOGE(TAG, "Failed to read sensor: %s", esp_err_to_name(ret));
         }
         
+        measurement_count++;
+        
+        // Check if we've reached the target count (if configured)
+        if (app->config.measurements_per_cycle > 0 && measurement_count >= app->config.measurements_per_cycle) {
+            ESP_LOGI(TAG, "Completed %lu measurements, stopping task", measurement_count);
+            break;
+        }
+        
         vTaskDelay(pdMS_TO_TICKS(app->config.measurement_interval_ms));
     }
     
     ESP_LOGI(TAG, "Soil monitoring task stopped");
+    app->is_running = false;
     monitoring_task_handle = NULL;
     vTaskDelete(NULL);
 }
@@ -148,6 +116,7 @@ void soil_monitor_get_default_config(soil_monitor_config_t* config) {
     config->wet_calibration_voltage = 1.0f;
     config->enable_wifi = true;
     config->enable_http_sending = true;
+    config->measurements_per_cycle = 0;  // 0 = infinite loop
     
     // Generate device ID from MAC address
     uint8_t mac[6];
@@ -306,6 +275,36 @@ esp_err_t soil_monitor_stop(soil_monitor_app_t* app) {
     }
     
     ESP_LOGI(TAG, "Soil monitoring application stopped");
+    return ESP_OK;
+}
+
+esp_err_t soil_monitor_wait_for_completion(soil_monitor_app_t* app, uint32_t timeout_ms) {
+    if (app == NULL) {
+        ESP_LOGE(TAG, "Invalid parameter");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (app->config.measurements_per_cycle == 0) {
+        ESP_LOGW(TAG, "measurements_per_cycle is 0, task runs indefinitely");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    uint32_t elapsed_ms = 0;
+    const uint32_t check_interval_ms = 100;
+    
+    ESP_LOGI(TAG, "Waiting for soil monitoring task to complete...");
+    
+    while (monitoring_task_handle != NULL) {
+        vTaskDelay(pdMS_TO_TICKS(check_interval_ms));
+        elapsed_ms += check_interval_ms;
+        
+        if (timeout_ms > 0 && elapsed_ms >= timeout_ms) {
+            ESP_LOGW(TAG, "Timeout waiting for soil monitoring task");
+            return ESP_ERR_TIMEOUT;
+        }
+    }
+    
+    ESP_LOGI(TAG, "Soil monitoring task completed");
     return ESP_OK;
 }
 

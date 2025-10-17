@@ -18,6 +18,9 @@ esp_err_t influx_sender_init(void);
 esp_err_t influx_sender_enqueue_soil(const influxdb_soil_data_t* data);
 esp_err_t influx_sender_enqueue_battery(const influxdb_battery_data_t* data);
 
+// Wait until the queue is empty (all data has been sent)
+esp_err_t influx_sender_wait_until_empty(uint32_t timeout_ms);
+
 #ifdef __cplusplus
 }
 #endif

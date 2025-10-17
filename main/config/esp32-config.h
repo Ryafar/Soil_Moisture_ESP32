@@ -35,7 +35,7 @@
 // Task Configuration
 // ============================================================================
 
-#define SOIL_TASK_STACK_SIZE    (4 * 1024)
+#define SOIL_TASK_STACK_SIZE    (12 * 1024)
 #define SOIL_TASK_PRIORITY      5
 #define SOIL_TASK_NAME          "soil_monitor"
 #define SOIL_AUTO_CALIBRATION_ENABLE    0
@@ -44,14 +44,24 @@
 #define SOIL_DRY_VOLTAGE_DEFAULT    3.0f
 #define SOIL_WET_VOLTAGE_DEFAULT    1.0f
 #define SOIL_MEASUREMENT_INTERVAL_MS    10 * 1000
+#define SOIL_MEASUREMENTS_PER_CYCLE     1  // Number of soil measurements before deep sleep
 
-#define BATTERY_MONITOR_TASK_STACK_SIZE    (4 * 1024)
+#define BATTERY_MONITOR_TASK_STACK_SIZE    (12 * 1024)
 #define BATTERY_MONITOR_TASK_PRIORITY      5
 #define BATTERY_MONITOR_TASK_NAME          "battery_monitor"
 #define BATTERY_MONITOR_MEASUREMENT_INTERVAL_MS    10 * 1000
 #define BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD      3.3f
 #define BATTERY_MONITOR_VOLTAGE_SCALE_FACTOR      2.0f  // 1/1 voltage divider
 #define BATTERY_MONITOR_USE_DEEP_SLEEP_ON_LOW_BATTERY 1
+#define BATTERY_MEASUREMENTS_PER_CYCLE  1  // Number of battery measurements before deep sleep
+
+// ============================================================================
+// Deep Sleep Configuration
+// ============================================================================
+
+#define DEEP_SLEEP_ENABLED              1                   // Enable/disable deep sleep mode
+#define DEEP_SLEEP_DURATION_SECONDS     (60 * 60)           // 60 minutes in seconds
+#define DEEP_SLEEP_WAKEUP_DELAY_MS      100                 // Delay before entering deep sleep
 
 // ============================================================================
 // Logging Configuration

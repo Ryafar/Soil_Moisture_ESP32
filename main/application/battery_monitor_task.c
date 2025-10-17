@@ -18,6 +18,10 @@ static const char* TAG = "BATTERY_MONITOR_TASK";
 // Task handle for the monitoring task
 static TaskHandle_t monitoring_task_handle = NULL;
 
+// Configuration for measurement cycles
+static uint32_t measurements_per_cycle = 0;  // 0 = infinite loop
+static volatile bool is_running = false;
+
 /**
  * @brief Send battery voltage reading to InfluxDB
  */
@@ -111,18 +115,33 @@ esp_err_t battery_monitor_stop() {
         return ESP_ERR_INVALID_STATE;
     }
 
-    vTaskDelete(monitoring_task_handle);
-    monitoring_task_handle = NULL;
+    is_running = false;
+    
+    // Wait for task to finish gracefully
+    uint32_t wait_count = 0;
+    while (monitoring_task_handle != NULL && wait_count < 50) {  // 5 second timeout
+        vTaskDelay(pdMS_TO_TICKS(100));
+        wait_count++;
+    }
+    
+    if (monitoring_task_handle != NULL) {
+        ESP_LOGW(TAG, "Battery monitor task did not stop gracefully, forcing deletion");
+        vTaskDelete(monitoring_task_handle);
+        monitoring_task_handle = NULL;
+    }
 
     ESP_LOGI(TAG, "Battery monitor task stopped");
     return ESP_OK;
 }
 
-esp_err_t battery_monitor_start() {
+esp_err_t battery_monitor_start(uint32_t cycles) {
     if (monitoring_task_handle != NULL) {
         ESP_LOGW(TAG, "Battery monitor task already running");
         return ESP_ERR_INVALID_STATE;
     }
+
+    measurements_per_cycle = cycles;
+    is_running = true;
 
     BaseType_t result = xTaskCreatePinnedToCore(
         battery_monitor_task,
@@ -136,10 +155,36 @@ esp_err_t battery_monitor_start() {
 
     if (result != pdPASS) {
         ESP_LOGE(TAG, "Failed to create battery monitor task");
+        is_running = false;
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Battery monitor task started");
+    ESP_LOGI(TAG, "Battery monitor task started with %lu measurements per cycle", measurements_per_cycle);
+    return ESP_OK;
+}
+
+esp_err_t battery_monitor_wait_for_completion(uint32_t timeout_ms) {
+    if (measurements_per_cycle == 0) {
+        ESP_LOGW(TAG, "measurements_per_cycle is 0, task runs indefinitely");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    uint32_t elapsed_ms = 0;
+    const uint32_t check_interval_ms = 100;
+    
+    ESP_LOGI(TAG, "Waiting for battery monitoring task to complete...");
+    
+    while (monitoring_task_handle != NULL) {
+        vTaskDelay(pdMS_TO_TICKS(check_interval_ms));
+        elapsed_ms += check_interval_ms;
+        
+        if (timeout_ms > 0 && elapsed_ms >= timeout_ms) {
+            ESP_LOGW(TAG, "Timeout waiting for battery monitoring task");
+            return ESP_ERR_TIMEOUT;
+        }
+    }
+    
+    ESP_LOGI(TAG, "Battery monitoring task completed");
     return ESP_OK;
 }
 
@@ -159,8 +204,10 @@ void battery_monitor_task(void *pvParameters) {
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     
     ESP_LOGI(TAG, "Battery monitor device ID: %s", device_id);
+    
+    uint32_t measurement_count = 0;
 
-    while (1) {
+    while (is_running) {
         float battery_voltage = 0;
         battery_monitor_read_voltage(&battery_voltage);
 
@@ -191,7 +238,20 @@ void battery_monitor_task(void *pvParameters) {
             }
         }
 
+        measurement_count++;
+        
+        // Check if we've reached the target count (if configured)
+        if (measurements_per_cycle > 0 && measurement_count >= measurements_per_cycle) {
+            ESP_LOGI(TAG, "Completed %lu measurements, stopping task", measurement_count);
+            break;
+        }
+
         // Wait for the next measurement interval
         vTaskDelay(pdMS_TO_TICKS(BATTERY_MONITOR_MEASUREMENT_INTERVAL_MS));
     }
+    
+    ESP_LOGI(TAG, "Battery monitor task stopped");
+    is_running = false;
+    monitoring_task_handle = NULL;
+    vTaskDelete(NULL);
 }

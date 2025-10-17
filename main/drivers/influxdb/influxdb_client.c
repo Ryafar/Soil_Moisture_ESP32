@@ -104,7 +104,7 @@ influxdb_response_status_t influxdb_write_soil_data(const influxdb_soil_data_t* 
         data->timestamp_ns
     );
 
-    ESP_LOGI(TAG, "Soil data line protocol: %s", line_protocol);
+    // ESP_LOGI(TAG, "Soil data line protocol: %s", line_protocol);
 
     esp_err_t result = influxdb_send_line_protocol(line_protocol);
     if (result == ESP_OK) {
@@ -141,7 +141,7 @@ influxdb_response_status_t influxdb_write_battery_data(const influxdb_battery_da
         );
     }
 
-    ESP_LOGD(TAG, "Battery data line protocol: %s", line_protocol);
+    // ESP_LOGD(TAG, "Battery data line protocol: %s", line_protocol);
 
     esp_err_t result = influxdb_send_line_protocol(line_protocol);
     if (result == ESP_OK) {
@@ -184,8 +184,8 @@ static esp_err_t influxdb_send_line_protocol(const char* line_protocol)
     // Set payload
     esp_http_client_set_post_field(s_client, line_protocol, strlen(line_protocol));
 
-    ESP_LOGI(TAG, "Sending to InfluxDB: %s", full_url);
-    ESP_LOGD(TAG, "Payload: %s", line_protocol);
+    // ESP_LOGI(TAG, "Sending to InfluxDB: %s", full_url);
+    // ESP_LOGD(TAG, "Payload: %s", line_protocol);
 
     esp_err_t result = ESP_FAIL;
     int retry_count = 0;

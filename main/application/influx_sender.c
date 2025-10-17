@@ -78,3 +78,32 @@ esp_err_t influx_sender_enqueue_battery(const influxdb_battery_data_t* data) {
     memcpy(&msg.payload.battery, data, sizeof(*data));
     return xQueueSend(s_queue, &msg, 0) == pdTRUE ? ESP_OK : ESP_ERR_NO_MEM;
 }
+
+esp_err_t influx_sender_wait_until_empty(uint32_t timeout_ms) {
+    if (!s_queue) {
+        ESP_LOGW(TAG, "Sender queue not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    uint32_t elapsed_ms = 0;
+    const uint32_t check_interval_ms = 100;
+    
+    ESP_LOGI(TAG, "Waiting for InfluxDB sender queue to empty...");
+    
+    while (uxQueueMessagesWaiting(s_queue) > 0) {
+        vTaskDelay(pdMS_TO_TICKS(check_interval_ms));
+        elapsed_ms += check_interval_ms;
+        
+        if (timeout_ms > 0 && elapsed_ms >= timeout_ms) {
+            ESP_LOGW(TAG, "Timeout waiting for sender queue to empty (%lu messages remaining)", 
+                     uxQueueMessagesWaiting(s_queue));
+            return ESP_ERR_TIMEOUT;
+        }
+    }
+    
+    // Give sender task a bit more time to complete the last transmission
+    vTaskDelay(pdMS_TO_TICKS(500));
+    
+    ESP_LOGI(TAG, "InfluxDB sender queue is empty, all data sent");
+    return ESP_OK;
+}
