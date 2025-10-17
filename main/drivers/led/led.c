@@ -16,6 +16,13 @@ esp_err_t led_init(gpio_num_t gpio_num) {
 
 esp_err_t led_set_state(gpio_num_t gpio_num, bool state) {
     gpio_set_level(gpio_num, state ? LED_STATE_ON : LED_STATE_OFF);
-    ESP_LOGI(TAG, "LED on GPIO %d set to %s", gpio_num, state ? "ON" : "OFF");
+    ESP_LOGD(TAG, "LED on GPIO %d set to %s", gpio_num, state ? "ON" : "OFF");
+    return ESP_OK;
+}
+
+esp_err_t led_toggle(gpio_num_t gpio_num) {
+    int current_level = gpio_get_level(gpio_num);
+    gpio_set_level(gpio_num, !current_level);
+    ESP_LOGD(TAG, "LED on GPIO %d toggled to %s", gpio_num, current_level ? "OFF" : "ON");
     return ESP_OK;
 }
