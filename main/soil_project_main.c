@@ -72,20 +72,24 @@ void app_main(void) {
         return;
     }
     
-    // Initialize NTP time synchronization (after WiFi is connected)
-    // ESP_LOGI(TAG, "Initializing NTP time synchronization...");
-    // ret = ntp_time_init(ntp_sync_callback);
-    // if (ret != ESP_OK) {
-    //     ESP_LOGW(TAG, "Failed to initialize NTP: %s", esp_err_to_name(ret));
-    // } else {
-    //     ESP_LOGI(TAG, "NTP initialization started, waiting for sync...");
-    //     ret = ntp_time_wait_for_sync(15000);  // 15 seconds timeout
-    //     if (ret == ESP_OK) {
-    //         ESP_LOGI(TAG, "NTP synchronized successfully!");
-    //     } else {
-    //         ESP_LOGW(TAG, "NTP sync timeout, will continue syncing in background");
-    //     }
-    // }
+    // Initialize NTP time synchronization (after WiFi is connected) - if enabled
+#if NTP_ENABLED
+    ESP_LOGI(TAG, "Initializing NTP time synchronization...");
+    ret = ntp_time_init(ntp_sync_callback);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to initialize NTP: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "NTP initialization started, waiting for sync...");
+        ret = ntp_time_wait_for_sync(NTP_SYNC_TIMEOUT_MS);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "NTP synchronized successfully!");
+        } else {
+            ESP_LOGW(TAG, "NTP sync timeout, will continue syncing in background");
+        }
+    }
+#else
+    ESP_LOGI(TAG, "NTP disabled - using server timestamps for InfluxDB");
+#endif
     
     // Start soil monitoring task
     ESP_LOGI(TAG, "Starting soil moisture monitoring (%lu measurement(s))...", config.measurements_per_cycle);

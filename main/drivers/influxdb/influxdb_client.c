@@ -1,5 +1,6 @@
 
 #include "influxdb_client.h"
+#include "../../config/esp32-config.h"
 #if INFLUXDB_USE_HTTPS
 #include <esp_crt_bundle.h>
 #endif
@@ -92,9 +93,12 @@ influxdb_response_status_t influxdb_write_soil_data(const influxdb_soil_data_t* 
         return INFLUXDB_RESPONSE_ERROR;
     }
 
-    // Create InfluxDB line protocol format with timestamp
-    // soil_moisture,device=ESP32_XXXXXX voltage=2.5,moisture_percent=45.2,raw_adc=2048 1633024800000000000
+    // Create InfluxDB line protocol format
+    // soil_moisture,device=ESP32_XXXXXX voltage=2.5,moisture_percent=45.2,raw_adc=2048 [timestamp]
     char line_protocol[512];
+    
+#if NTP_ENABLED
+    // With NTP: Include timestamp in nanoseconds
     snprintf(line_protocol, sizeof(line_protocol),
         "soil_moisture,device=%s voltage=%.3f,moisture_percent=%.2f,raw_adc=%d %llu",
         data->device_id,
@@ -103,6 +107,16 @@ influxdb_response_status_t influxdb_write_soil_data(const influxdb_soil_data_t* 
         data->raw_adc,
         data->timestamp_ns
     );
+#else
+    // Without NTP: Let InfluxDB use server time (omit timestamp)
+    snprintf(line_protocol, sizeof(line_protocol),
+        "soil_moisture,device=%s voltage=%.3f,moisture_percent=%.2f,raw_adc=%d",
+        data->device_id,
+        data->voltage,
+        data->moisture_percent,
+        data->raw_adc
+    );
+#endif
 
     // ESP_LOGI(TAG, "Soil data line protocol: %s", line_protocol);
 
@@ -121,8 +135,11 @@ influxdb_response_status_t influxdb_write_battery_data(const influxdb_battery_da
     }
 
     // Create InfluxDB line protocol format
-    // battery,device=ESP32_XXXXXX voltage=3.7,percentage=85.0 1633024800000000000
+    // battery,device=ESP32_XXXXXX voltage=3.7,percentage=85.0 [timestamp]
     char line_protocol[512];
+    
+#if NTP_ENABLED
+    // With NTP: Include timestamp
     if (data->percentage >= 0) {
         snprintf(line_protocol, sizeof(line_protocol),
             "battery,device=%s voltage=%.3f,percentage=%.1f %llu",
@@ -140,6 +157,24 @@ influxdb_response_status_t influxdb_write_battery_data(const influxdb_battery_da
             data->timestamp_ns
         );
     }
+#else
+    // Without NTP: Let InfluxDB use server time (omit timestamp)
+    if (data->percentage >= 0) {
+        snprintf(line_protocol, sizeof(line_protocol),
+            "battery,device=%s voltage=%.3f,percentage=%.1f",
+            data->device_id,
+            data->voltage,
+            data->percentage
+        );
+    } else {
+        // No percentage available
+        snprintf(line_protocol, sizeof(line_protocol),
+            "battery,device=%s voltage=%.3f",
+            data->device_id,
+            data->voltage
+        );
+    }
+#endif
 
     // ESP_LOGD(TAG, "Battery data line protocol: %s", line_protocol);
 
@@ -157,14 +192,26 @@ static esp_err_t influxdb_send_line_protocol(const char* line_protocol)
         return ESP_FAIL;
     }
 
-    // Build full URL with query parameters (include precision for timestamps)
+    // Build full URL with query parameters
     char full_url[256];
 #if INFLUXDB_USE_HTTPS
-    snprintf(full_url, sizeof(full_url), "https://%s:%d%s?org=%s&bucket=%s&precision=ns", 
-             s_config.server, s_config.port, s_config.endpoint, s_config.org, s_config.bucket);
+    #if NTP_ENABLED
+        // With NTP: Include precision parameter for timestamps
+        snprintf(full_url, sizeof(full_url), "https://%s:%d%s?org=%s&bucket=%s&precision=ns", 
+                 s_config.server, s_config.port, s_config.endpoint, s_config.org, s_config.bucket);
+    #else
+        // Without NTP: No precision parameter needed (server time)
+        snprintf(full_url, sizeof(full_url), "https://%s:%d%s?org=%s&bucket=%s", 
+                 s_config.server, s_config.port, s_config.endpoint, s_config.org, s_config.bucket);
+    #endif
 #else
-    snprintf(full_url, sizeof(full_url), "http://%s:%d%s?org=%s&bucket=%s&precision=ns", 
-             s_config.server, s_config.port, s_config.endpoint, s_config.org, s_config.bucket);
+    #if NTP_ENABLED
+        snprintf(full_url, sizeof(full_url), "http://%s:%d%s?org=%s&bucket=%s&precision=ns", 
+                 s_config.server, s_config.port, s_config.endpoint, s_config.org, s_config.bucket);
+    #else
+        snprintf(full_url, sizeof(full_url), "http://%s:%d%s?org=%s&bucket=%s", 
+                 s_config.server, s_config.port, s_config.endpoint, s_config.org, s_config.bucket);
+    #endif
 #endif
 
     // Set the URL for this request

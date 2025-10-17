@@ -64,6 +64,13 @@
 #define DEEP_SLEEP_WAKEUP_DELAY_MS      100                 // Delay before entering deep sleep
 
 // ============================================================================
+// NTP Time Synchronization Configuration
+// ============================================================================
+
+#define NTP_ENABLED                     0                   // Enable/disable NTP time synchronization (0 = use server time, 1 = use NTP time)
+#define NTP_SYNC_TIMEOUT_MS             15000               // NTP sync timeout in milliseconds
+
+// ============================================================================
 // Logging Configuration
 // ============================================================================
 
