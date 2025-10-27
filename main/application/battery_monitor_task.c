@@ -214,6 +214,7 @@ void battery_monitor_task(void *pvParameters) {
         // Log the reading
         ESP_LOGI(TAG, "Battery Voltage: %.2f V", battery_voltage);
 
+#if USE_INFLUXDB
         // Send data to InfluxDB if WiFi is connected
         if (wifi_manager_is_connected()) {
             influxdb_response_status_t influx_status = battery_send_reading_to_influxdb(battery_voltage, device_id);
@@ -225,6 +226,7 @@ void battery_monitor_task(void *pvParameters) {
         } else {
             ESP_LOGW(TAG, "WiFi not connected, skipping InfluxDB transmission");
         }
+#endif
 
         if (battery_voltage < BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD) {
             ESP_LOGW(TAG, "Battery voltage low: %.2f V", battery_voltage);

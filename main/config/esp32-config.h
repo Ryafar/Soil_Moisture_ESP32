@@ -89,6 +89,7 @@
 // InfluxDB Configuration
 // ============================================================================
 
+#define USE_INFLUXDB            1                   // Enable InfluxDB data logging        
 #define INFLUXDB_SERVER         "data.michipi.mywire.org"
 #define INFLUXDB_PORT           443                 // HTTPS port (nginx reverse proxy)
 #define INFLUXDB_USE_HTTPS      1                   // HTTPS required for nginx proxy

@@ -71,6 +71,7 @@ static void soil_monitoring_task(void* pvParameters) {
                          reading.moisture_percent, reading.voltage, reading.raw_adc);
             }
             
+#if USE_INFLUXDB
             // Send data to InfluxDB if enabled and WiFi is connected
             if (app->config.enable_http_sending && wifi_manager_is_connected()) {
                 influxdb_response_status_t influx_status = soil_send_reading_to_influxdb(&reading, app->config.device_id);
@@ -85,6 +86,7 @@ static void soil_monitoring_task(void* pvParameters) {
         } else {
             ESP_LOGE(TAG, "Failed to read sensor: %s", esp_err_to_name(ret));
         }
+#endif
         
         measurement_count++;
         
