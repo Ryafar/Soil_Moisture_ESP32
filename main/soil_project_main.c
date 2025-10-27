@@ -113,13 +113,13 @@ void app_main(void) {
     ESP_LOGI(TAG, "Waiting for all measurements to complete...");
     
     // Wait for soil monitoring task (30 second timeout)
-    ret = soil_monitor_wait_for_completion(&app, 30000);
+    ret = soil_monitor_wait_for_completion(&app, SOIL_MEASUREMENTS_PER_CYCLE * config.measurement_interval_ms + 30000);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Soil monitoring completion failed: %s", esp_err_to_name(ret));
     }
     
     // Wait for battery monitoring task (30 second timeout)
-    ret = battery_monitor_wait_for_completion(30000);
+    ret = battery_monitor_wait_for_completion(BATTERY_MEASUREMENTS_PER_CYCLE * BATTERY_MONITOR_MEASUREMENT_INTERVAL_MS + 30000);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Battery monitoring completion failed: %s", esp_err_to_name(ret));
     }

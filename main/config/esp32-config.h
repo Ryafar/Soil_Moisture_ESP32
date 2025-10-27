@@ -50,8 +50,8 @@
 #define BATTERY_MONITOR_TASK_PRIORITY      5
 #define BATTERY_MONITOR_TASK_NAME          "battery_monitor"
 #define BATTERY_MONITOR_MEASUREMENT_INTERVAL_MS    10 * 1000
-#define BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD      3.3f
-#define BATTERY_MONITOR_VOLTAGE_SCALE_FACTOR      2.0f  // 1/1 voltage divider
+#define BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD      3.2f
+#define BATTERY_MONITOR_VOLTAGE_SCALE_FACTOR      2.0f  // 1-1 voltage divider
 #define BATTERY_MONITOR_USE_DEEP_SLEEP_ON_LOW_BATTERY 1
 #define BATTERY_MEASUREMENTS_PER_CYCLE  1  // Number of battery measurements before deep sleep
 
