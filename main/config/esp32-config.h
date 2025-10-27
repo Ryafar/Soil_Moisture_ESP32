@@ -35,18 +35,19 @@
 // Task Configuration
 // ============================================================================
 
-#define SOIL_TASK_STACK_SIZE    (12 * 1024)
-#define SOIL_TASK_PRIORITY      5
-#define SOIL_TASK_NAME          "soil_monitor"
+#define SOIL_TASK_STACK_SIZE            (4 * 1024)
+#define SOIL_TASK_PRIORITY              5
+#define SOIL_TASK_NAME                  "soil_monitor"
+#define SOIL_SENSOR_POWER_PIN           GPIO_NUM_19
 #define SOIL_AUTO_CALIBRATION_ENABLE    0
 #define SOIL_CALIBRATION_TIMEOUT_MS     10000
 #define SOIL_CALIBRATION_SAMPLES        10
-#define SOIL_DRY_VOLTAGE_DEFAULT    3.0f
-#define SOIL_WET_VOLTAGE_DEFAULT    1.0f
+#define SOIL_DRY_VOLTAGE_DEFAULT        3.0f
+#define SOIL_WET_VOLTAGE_DEFAULT        1.0f
 #define SOIL_MEASUREMENT_INTERVAL_MS    10 * 1000
 #define SOIL_MEASUREMENTS_PER_CYCLE     1  // Number of soil measurements before deep sleep
 
-#define BATTERY_MONITOR_TASK_STACK_SIZE    (12 * 1024)
+#define BATTERY_MONITOR_TASK_STACK_SIZE    (4 * 1024)
 #define BATTERY_MONITOR_TASK_PRIORITY      5
 #define BATTERY_MONITOR_TASK_NAME          "battery_monitor"
 #define BATTERY_MONITOR_MEASUREMENT_INTERVAL_MS    10 * 1000

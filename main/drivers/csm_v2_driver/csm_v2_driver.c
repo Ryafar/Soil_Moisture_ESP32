@@ -13,17 +13,19 @@
 
 #include "csm_v2_driver.h"
 #include "esp_log.h"
+#include "driver/gpio.h"
 #include <string.h>
 
 static const char* TAG = "CSM_V2";
 
-esp_err_t csm_v2_get_default_config(csm_v2_config_t* config, adc_unit_t adc_unit, adc_channel_t adc_channel) {
+esp_err_t csm_v2_get_default_config(csm_v2_config_t* config, adc_unit_t adc_unit, adc_channel_t adc_channel, int power_pin) {
     if (config == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
     
     config->adc_unit = adc_unit;
     config->adc_channel = adc_channel;
+    config->esp_pin_power = power_pin;            
     config->dry_voltage = CSM_V2_DRY_VOLTAGE_DEFAULT;         // Typical dry reading
     config->wet_voltage = CSM_V2_WET_VOLTAGE_DEFAULT;         // Typical wet reading
     config->enable_calibration = false;
@@ -55,9 +57,18 @@ esp_err_t csm_v2_init(csm_v2_driver_t* driver, const csm_v2_config_t* config) {
         return ret;
     }
     
+    // Initialize power control GPIO pin
+    ret = csm_v2_init_power_pin(driver);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize power pin: %s", esp_err_to_name(ret));
+        adc_shared_remove_channel(config->adc_unit, config->adc_channel);
+        adc_shared_deinit(config->adc_unit);
+        return ret;
+    }
+    
     driver->is_initialized = true;
-    ESP_LOGI(TAG, "CSM V2 driver initialized successfully on ADC%d CH%d", 
-             config->adc_unit + 1, config->adc_channel);
+    ESP_LOGI(TAG, "CSM V2 driver initialized successfully on ADC%d CH%d with power pin GPIO%d", 
+             config->adc_unit + 1, config->adc_channel, config->esp_pin_power);
     return ESP_OK;
 }
 
@@ -71,9 +82,17 @@ esp_err_t csm_v2_deinit(csm_v2_driver_t* driver) {
         ESP_LOGW(TAG, "Driver not initialized");
         return ESP_OK;
     }
-    
+
+    // Power off the sensor if still powered
+    esp_err_t ret = csm_v2_disable_power(driver);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to power off sensor: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "CSM V2 Sensor powered off successfully");
+    }
+
     // Remove soil sensor channel from shared ADC
-    esp_err_t ret = adc_shared_remove_channel(driver->config.adc_unit, driver->config.adc_channel);
+    ret = adc_shared_remove_channel(driver->config.adc_unit, driver->config.adc_channel);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to remove soil sensor channel from shared ADC: %s", esp_err_to_name(ret));
     }
@@ -89,6 +108,7 @@ esp_err_t csm_v2_deinit(csm_v2_driver_t* driver) {
     ESP_LOGI(TAG, "CSM V2 driver deinitialized successfully");
     return ESP_OK;
 }
+
 
 esp_err_t csm_v2_read_voltage(csm_v2_driver_t* driver, float* voltage) {
     if (driver == NULL || voltage == NULL) {
@@ -166,7 +186,96 @@ esp_err_t csm_v2_calibrate(csm_v2_driver_t* driver, float dry_voltage, float wet
     return ESP_OK;
 }
 
+esp_err_t csm_v2_init_power_pin(csm_v2_driver_t* driver) {
+    if (driver == NULL) {
+        ESP_LOGE(TAG, "Invalid parameter");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (driver->config.esp_pin_power < 0) {
+        ESP_LOGE(TAG, "Invalid power pin number: %d", driver->config.esp_pin_power);
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    // Configure the GPIO pin for power control
+    gpio_reset_pin(driver->config.esp_pin_power);
+    esp_err_t ret = gpio_set_direction(driver->config.esp_pin_power, GPIO_MODE_OUTPUT);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set GPIO direction: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    // Initialize power pin to LOW (power off)
+    ret = gpio_set_level(driver->config.esp_pin_power, 0);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set GPIO level: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "Power pin GPIO%d initialized (power OFF)", driver->config.esp_pin_power);
+    return ESP_OK;
+}
 
+esp_err_t csm_v2_enable_power(csm_v2_driver_t* driver) {
+    if (driver == NULL) {
+        ESP_LOGE(TAG, "Invalid parameter");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (!driver->is_initialized) {
+        ESP_LOGE(TAG, "Driver not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    esp_err_t ret = gpio_set_level(driver->config.esp_pin_power, 1);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to enable power: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    ESP_LOGD(TAG, "Power enabled on GPIO%d", driver->config.esp_pin_power);
+    return ESP_OK;
+}
+
+esp_err_t csm_v2_disable_power(csm_v2_driver_t* driver) {
+    if (driver == NULL) {
+        ESP_LOGE(TAG, "Invalid parameter");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (!driver->is_initialized) {
+        ESP_LOGE(TAG, "Driver not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    esp_err_t ret = gpio_set_level(driver->config.esp_pin_power, 0);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to disable power: %s", esp_err_to_name(ret));
+        return ret;
+    }
+    
+    ESP_LOGD(TAG, "Power disabled on GPIO%d", driver->config.esp_pin_power);
+    return ESP_OK;
+}
+
+esp_err_t csm_v2_get_power_state(csm_v2_driver_t* driver, bool* is_powered) {
+    if (driver == NULL || is_powered == NULL) {
+        ESP_LOGE(TAG, "Invalid parameters");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (!driver->is_initialized) {
+        ESP_LOGE(TAG, "Driver not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    int gpio_level = gpio_get_level(driver->config.esp_pin_power);
+    *is_powered = (gpio_level == 1);
+    
+    ESP_LOGD(TAG, "Power state on GPIO%d: %s", driver->config.esp_pin_power, 
+             *is_powered ? "ON" : "OFF");
+    return ESP_OK;
+}
 
 
 // MARK: UTILS

@@ -64,7 +64,26 @@ static void soil_monitoring_task(void* pvParameters) {
     
     // Measurement loop - runs until configured count reached or infinite if measurements_per_cycle == 0
     while (app->is_running) {
-        esp_err_t ret = csm_v2_read(&app->sensor_driver, &reading);
+
+        // Power the sensor
+        esp_err_t ret = csm_v2_enable_power(&app->sensor_driver);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to power on sensor: %s", esp_err_to_name(ret));
+            continue;
+        }
+        
+        // Wait for sensor to stabilize
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
+        // Read sensor data
+        ret = csm_v2_read(&app->sensor_driver, &reading);
+
+        // Power off the sensor to save energy
+        esp_err_t ret2 = csm_v2_disable_power(&app->sensor_driver);
+        if (ret2 != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to power off sensor: %s", esp_err_to_name(ret2));
+        }
+
         if (ret == ESP_OK) {
             if (app->config.enable_logging) {
                 ESP_LOGI(TAG, "Soil Moisture: %.1f%% | Voltage: %.3fV | Raw ADC: %d",
@@ -98,7 +117,15 @@ static void soil_monitoring_task(void* pvParameters) {
         
         vTaskDelay(pdMS_TO_TICKS(app->config.measurement_interval_ms));
     }
-    
+
+    // Ensure sensor is powered off before exiting
+    esp_err_t ret = csm_v2_disable_power(&app->sensor_driver);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to power off sensor: %s", esp_err_to_name(ret));
+    } else {
+        ESP_LOGI(TAG, "CSM V2 Sensor powered off successfully");
+    }
+
     ESP_LOGI(TAG, "Soil monitoring task stopped");
     app->is_running = false;
     monitoring_task_handle = NULL;
@@ -138,7 +165,7 @@ esp_err_t soil_monitor_init(soil_monitor_app_t* app, const soil_monitor_config_t
     
     // Initialize sensor driver
     csm_v2_config_t sensor_config;
-    csm_v2_get_default_config(&sensor_config, config->adc_unit, config->adc_channel);
+    csm_v2_get_default_config(&sensor_config, config->adc_unit, config->adc_channel, SOIL_SENSOR_POWER_PIN);
     sensor_config.dry_voltage = config->dry_calibration_voltage;
     sensor_config.wet_voltage = config->wet_calibration_voltage;
     sensor_config.enable_calibration = true;
