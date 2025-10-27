@@ -15,5 +15,17 @@ esp_err_t battery_monitor_stop();
 esp_err_t battery_monitor_wait_for_completion(uint32_t timeout_ms);
 void battery_monitor_task(void* pvParameters);
 
+/**
+ * @brief Check if calibration mode should be triggered (3 resets within 1 minute)
+ * @return true if calibration should be performed, false otherwise
+ */
+bool battery_monitor_check_calibration_trigger();
+
+/**
+ * @brief Perform automatic calibration to match target voltage
+ * @param target_voltage Target voltage to calibrate to (e.g., 4.2V)
+ * @return ESP_OK on success, error code otherwise
+ */
+esp_err_t battery_monitor_auto_calibrate(float target_voltage);
 
 #endif // BATTERY_MONITOR_TASK_H

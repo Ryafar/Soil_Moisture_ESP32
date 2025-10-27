@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "application/influx_sender.h"
+#include "application/battery_monitor_task.h"
 #include "utils/ntp_time.h"
 
 static const char *TAG = "MAIN";
@@ -34,6 +35,27 @@ static void ntp_sync_callback(ntp_status_t status, const char* time_str) {
 void app_main(void) {
     ESP_LOGI(TAG, "=== Soil Moisture Sensor with Deep Sleep ===");
     ESP_LOGI(TAG, "ESP-IDF Version: %s", esp_get_idf_version());
+    
+    // Check if calibration mode should be triggered (3 resets within 1 minute)
+    if (battery_monitor_check_calibration_trigger()) {
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "!!! ENTERING BATTERY CALIBRATION MODE !!!");
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "Make sure your battery is fully charged to 4.2V");
+        ESP_LOGI(TAG, "Calibrating to 4.2V...");
+        
+        esp_err_t ret = battery_monitor_auto_calibrate(4.2f);
+        if (ret == ESP_OK) {
+            ESP_LOGI(TAG, "Calibration successful! Device will restart in 10 seconds...");
+            vTaskDelay(pdMS_TO_TICKS(10000));
+        } else {
+            ESP_LOGE(TAG, "Calibration failed: %s", esp_err_to_name(ret));
+            ESP_LOGE(TAG, "Device will restart in 5 seconds...");
+            vTaskDelay(pdMS_TO_TICKS(5000));
+        }
+        esp_restart();
+        return;
+    }
     
     // Check if this is a deep sleep wakeup
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
