@@ -10,12 +10,18 @@
 #include "esp_sleep.h"
 #include "application/battery_monitor.h"
 #include "drivers/csm_v2_driver/csm_v2_driver.h"
+#include "drivers/wifi/wifi_manager.h"
+#include "drivers/mqtt/my_mqtt_driver.h"
+#include "application/mqtt_sender.h"
 #include "utils/esp_utils.h"
+#include "utils/ntp_time.h"
 #include "esp_mac.h"
 #include "config/esp32-config.h"
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_timer.h"
+#include <string.h>
 
 static const char *TAG = "MAIN";
 
@@ -68,21 +74,38 @@ static void measurement_task(void* pvParameters) {
         .wet_voltage = SOIL_WET_VOLTAGE_DEFAULT,
         .enable_calibration = false
     };
-        ret = csm_v2_init(&csm_config);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize CSM v2: %s", esp_err_to_name(ret));
-        return;
-    }
+    csm_v2_init(&csm_config);
+
 
     // Initialize battery monitoring
     ESP_LOGI(TAG, "Initializing battery monitoring...");
-    ret = battery_monitor_init();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize battery monitoring: %s", esp_err_to_name(ret));
-        return;
-    }
+    battery_monitor_init();
 
 
+#if USE_MQTT
+    // Initialize WiFi 
+    ESP_LOGI(TAG, "Initializing WiFi...");
+    wifi_manager_config_t wifi_config = {
+        .ssid = WIFI_SSID,
+        .password = WIFI_PASSWORD,
+        .max_retry = WIFI_MAX_RETRY,
+    };
+    wifi_manager_init(&wifi_config, NULL);
+
+
+    // Initialize MQTT client
+    mqtt_client_config_t mqtt_config = {
+        .broker_uri = MQTT_BROKER_URI,
+        .username = MQTT_USERNAME,
+        .password = MQTT_PASSWORD,
+        .client_id = {0},
+        .base_topic = MQTT_BASE_TOPIC,
+        .keepalive = 60,
+        .timeout_ms = 5000,
+        .use_ssl = MQTT_USE_SSL,
+    };
+    mqtt_client_init(&mqtt_config);
+#endif
 
 
 
@@ -95,23 +118,25 @@ static void measurement_task(void* pvParameters) {
 
     ESP_LOGI(TAG, "Starting main measurement loop...");
 
+    float battery_voltage_mean = 0.0f;
+    csm_v2_reading_t soil_reading_mean = {0};
+
     { // Measuring
         ESP_LOGI(TAG, "=== Measurement Cycle ===");
 
         // ======== Measure Battery ========
-        float battery_voltage = 0.0f;
         float battery_voltage_sum = 0.0f;
         int nr_measurements = 0;
         ret = ESP_OK;
 
         while (nr_measurements < BATTERY_ADC_MEASUREMENTS) {
-            ret |= battery_monitor_measure(&battery_voltage);
-            battery_voltage_sum += battery_voltage;
+            ret |= battery_monitor_measure(&battery_voltage_mean);
+            battery_voltage_sum += battery_voltage_mean;
             nr_measurements++;
         }
         if (ret == ESP_OK) {
-            battery_voltage = battery_voltage_sum / nr_measurements;
-            ESP_LOGI(TAG, "Battery Voltage: %.3f V (average of %d measurements)", battery_voltage, nr_measurements);
+            battery_voltage_mean = battery_voltage_sum / nr_measurements;
+            ESP_LOGI(TAG, "Battery Voltage: %.3f V (average of %d measurements)", battery_voltage_mean, nr_measurements);
         } else {
             ESP_LOGE(TAG, "Failed to measure battery voltage: %s", esp_err_to_name(ret));
         }
@@ -119,7 +144,6 @@ static void measurement_task(void* pvParameters) {
 
         // ======== Measure Soil ========
         csm_v2_reading_t soil_reading;
-        csm_v2_reading_t soil_reading_sum = {0};
         nr_measurements = 0;
         ret = ESP_OK;
         ret |= csm_v2_enable_power();
@@ -127,18 +151,18 @@ static void measurement_task(void* pvParameters) {
 
         while (nr_measurements < SOIL_ADC_MEASUREMENTS) {
             ret |= csm_v2_read(&soil_reading);
-            soil_reading_sum.voltage += soil_reading.voltage;
-            soil_reading_sum.moisture_percent += soil_reading.moisture_percent;
-            soil_reading_sum.raw_adc += soil_reading.raw_adc;
+            soil_reading_mean.voltage += soil_reading.voltage;
+            soil_reading_mean.moisture_percent += soil_reading.moisture_percent;
+            soil_reading_mean.raw_adc += soil_reading.raw_adc;
             nr_measurements++;
         }
         ret |= csm_v2_disable_power();
         if (ret == ESP_OK) {
-            soil_reading_sum.voltage /= nr_measurements;
-            soil_reading_sum.moisture_percent /= nr_measurements;
-            soil_reading_sum.raw_adc /= nr_measurements;
+            soil_reading_mean.voltage /= nr_measurements;
+            soil_reading_mean.moisture_percent /= nr_measurements;
+            soil_reading_mean.raw_adc /= nr_measurements;
             ESP_LOGI(TAG, "Soil Voltage: %.3f V | Moisture: %.1f%% | Raw ADC: %d (average of %d measurements)", 
-                     soil_reading_sum.voltage, soil_reading_sum.moisture_percent, soil_reading_sum.raw_adc, nr_measurements);
+                     soil_reading_mean.voltage, soil_reading_mean.moisture_percent, soil_reading_mean.raw_adc, nr_measurements);
         } else {
             ESP_LOGE(TAG, "Failed to measure soil moisture: %s", esp_err_to_name(ret));
         }
@@ -149,6 +173,35 @@ static void measurement_task(void* pvParameters) {
     // ######################################################
  
 
+#if USE_MQTT
+    wifi_manager_connect();
+    mqtt_client_connect();
+
+    // NTP time sync (optional, can be skipped if not needed for timestamps)
+    ntp_time_init(NULL);
+    ntp_time_wait_for_sync(30000);  // 30 seconds timeout
+        
+    uint64_t timestamp_ms = ntp_time_get_timestamp_ms();
+
+    mqtt_battery_data_t bdata = {0};
+    bdata.timestamp_ms = timestamp_ms;
+    bdata.voltage = battery_voltage_mean;
+    bdata.percentage = 0.0f;
+    strncpy(bdata.device_id, device_id, sizeof(bdata.device_id) - 1);
+    mqtt_publish_battery_data(&bdata);
+
+    mqtt_soil_data_t sdata = {0};
+    sdata.timestamp_ms = timestamp_ms;
+    sdata.voltage = soil_reading_mean.voltage;
+    sdata.moisture_percent = soil_reading_mean.moisture_percent;
+    sdata.raw_adc = soil_reading_mean.raw_adc;
+    strncpy(sdata.device_id, device_id, sizeof(sdata.device_id) - 1);
+    mqtt_publish_soil_data(&sdata);
+
+    mqtt_client_wait_published(5000);  // Wait up to 5 seconds for messages to be published
+    mqtt_client_disconnect();
+    wifi_manager_disconnect();
+#endif
 
     
     // ######################################################

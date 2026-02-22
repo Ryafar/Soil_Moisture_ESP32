@@ -111,7 +111,7 @@
 // MQTT Configuration
 // ============================================================================
 
-#define USE_MQTT                0                   // Enable MQTT data publishing
+#define USE_MQTT                1                   // Enable MQTT data publishing
 #define MQTT_BROKER_URI         "mqtt://192.168.1.253:1883"  // MQTT broker URI (mqtt:// or mqtts://)
 #define MQTT_BASE_TOPIC         "soil_sensor"       // Base topic for MQTT publishing
 #define MQTT_CLIENT_ID_PREFIX   "esp32_soil_"       // Client ID prefix (will append device ID)

@@ -6,11 +6,15 @@ idf_component_register(SRCS "main.c"
                             "drivers/adc/adc.c"
                             "drivers/adc/adc_manager.c"
                             "application/battery_monitor.c"
+                            "application/mqtt_sender.c"
                             "drivers/csm_v2_driver/csm_v2_driver.c"
+                            "drivers/wifi/wifi_manager.c"
+                            "drivers/mqtt/my_mqtt_driver.c"
                             "utils/esp_utils.c"
+                            "utils/ntp_time.c"
                             "drivers/led/led.c"
                        INCLUDE_DIRS "."
-                       REQUIRES driver esp_adc nvs_flash esp_event esp-tls json esp_timer lwip)
+                       REQUIRES driver esp_adc nvs_flash esp_event esp-tls json esp_timer lwip esp_wifi esp_netif mqtt)
 
 
 #######################
