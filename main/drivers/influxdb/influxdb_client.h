@@ -110,4 +110,9 @@ influxdb_response_status_t influxdb_test_connection(void);
  */
 int influxdb_get_last_status_code(void);
 
+/**
+ * @brief Send a raw InfluxDB line protocol string (for testing/debug)
+ */
+esp_err_t influxdb_send_line_protocol(const char* line_protocol);
+
 #endif // INFLUXDB_CLIENT_H

@@ -39,10 +39,7 @@ typedef struct {
 /**
  * @brief Soil moisture sensor handle
  */
-typedef struct {
-    csm_v2_config_t config;             ///< Sensor configuration
-    bool is_initialized;                ///< Initialization status
-} csm_v2_driver_t;
+// No per-instance driver struct; driver uses a single global configuration.
 
 /**
  * @brief Soil moisture reading structure
@@ -72,7 +69,7 @@ esp_err_t csm_v2_get_default_config(csm_v2_config_t* config, adc_unit_t adc_unit
  * @param config Pointer to configuration structure
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
-esp_err_t csm_v2_init(csm_v2_driver_t* driver, const csm_v2_config_t* config);
+esp_err_t csm_v2_init(const csm_v2_config_t* config);
 
 /**
  * @brief Deinitialize the soil moisture sensor driver
@@ -80,7 +77,7 @@ esp_err_t csm_v2_init(csm_v2_driver_t* driver, const csm_v2_config_t* config);
  * @param driver Pointer to driver handle
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
-esp_err_t csm_v2_deinit(csm_v2_driver_t* driver);
+esp_err_t csm_v2_deinit(void);
 
 /**
  * @brief Read raw voltage from the sensor
@@ -89,7 +86,7 @@ esp_err_t csm_v2_deinit(csm_v2_driver_t* driver);
  * @param voltage Pointer to store voltage reading
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
-esp_err_t csm_v2_read_voltage(csm_v2_driver_t* driver, float* voltage);
+esp_err_t csm_v2_read_voltage(float* voltage);
 
 /**
  * @brief Read complete sensor data
@@ -98,7 +95,7 @@ esp_err_t csm_v2_read_voltage(csm_v2_driver_t* driver, float* voltage);
  * @param reading Pointer to store sensor reading
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
-esp_err_t csm_v2_read(csm_v2_driver_t* driver, csm_v2_reading_t* reading);
+esp_err_t csm_v2_read(csm_v2_reading_t* reading);
 
 /**
  * @brief Calibrate the sensor with dry and wet values
@@ -108,7 +105,7 @@ esp_err_t csm_v2_read(csm_v2_driver_t* driver, csm_v2_reading_t* reading);
  * @param wet_voltage Voltage reading when sensor is wet
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
-esp_err_t csm_v2_calibrate(csm_v2_driver_t* driver, float dry_voltage, float wet_voltage);
+esp_err_t csm_v2_calibrate(float dry_voltage, float wet_voltage);
 
 /**
  * @brief Initialize GPIO pin for power control
@@ -116,7 +113,7 @@ esp_err_t csm_v2_calibrate(csm_v2_driver_t* driver, float dry_voltage, float wet
  * @param driver Pointer to driver handle
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
-esp_err_t csm_v2_init_power_pin(csm_v2_driver_t* driver);
+esp_err_t csm_v2_init_power_pin(void);
 
 /**
  * @brief Enable power to the sensor
@@ -124,7 +121,7 @@ esp_err_t csm_v2_init_power_pin(csm_v2_driver_t* driver);
  * @param driver Pointer to driver handle
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
-esp_err_t csm_v2_enable_power(csm_v2_driver_t* driver);
+esp_err_t csm_v2_enable_power(void);
 
 /**
  * @brief Disable power to the sensor
@@ -132,7 +129,7 @@ esp_err_t csm_v2_enable_power(csm_v2_driver_t* driver);
  * @param driver Pointer to driver handle
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
-esp_err_t csm_v2_disable_power(csm_v2_driver_t* driver);
+esp_err_t csm_v2_disable_power(void);
 
 /**
  * @brief Get the current power state of the sensor
@@ -141,9 +138,9 @@ esp_err_t csm_v2_disable_power(csm_v2_driver_t* driver);
  * @param is_powered Pointer to store power state (true if powered, false if not)
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
-esp_err_t csm_v2_get_power_state(csm_v2_driver_t* driver, bool* is_powered);
+esp_err_t csm_v2_get_power_state(bool* is_powered);
 
 // MARK: UTILS
-float csm_v2_voltage_to_percent(csm_v2_driver_t* driver, float voltage);
+float csm_v2_voltage_to_percent(float voltage);
 
 #endif // CSM_V2_DRIVER_H

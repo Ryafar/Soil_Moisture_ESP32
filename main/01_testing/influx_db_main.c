@@ -14,12 +14,12 @@ static void influx_demo_task(void *arg);
 void app_main(void) {
     ESP_LOGI(TAG, "Starting InfluxDB Main - WiFi Connection Only");
     
+    // WIFI
     wifi_manager_config_t wifi_config = {
         .ssid = WIFI_SSID,
         .password = WIFI_PASSWORD,
         .max_retry = WIFI_MAX_RETRY,
     };
-
     wifi_manager_init(&wifi_config, NULL);
     wifi_manager_connect();
 
@@ -54,20 +54,17 @@ static void influx_demo_task(void *arg)
         .timeout_ms = HTTP_TIMEOUT_MS,
         .max_retries = HTTP_MAX_RETRIES,
     };
-
-    // Copy strings to avoid const issues
-    strncpy(influxdb_config.server, INFLUXDB_SERVER, sizeof(influxdb_config.server) - 1);
-    strncpy(influxdb_config.bucket, INFLUXDB_BUCKET, sizeof(influxdb_config.bucket) - 1);
-    strncpy(influxdb_config.org, INFLUXDB_ORG, sizeof(influxdb_config.org) - 1);
-    strncpy(influxdb_config.token, INFLUXDB_TOKEN, sizeof(influxdb_config.token) - 1);
-    strncpy(influxdb_config.endpoint, INFLUXDB_ENDPOINT, sizeof(influxdb_config.endpoint) - 1);
-
     esp_err_t influx_ret = influxdb_client_init(&influxdb_config);
     if (influx_ret != ESP_OK) {
         ESP_LOGE(TAG, "❌ Failed to initialize InfluxDB client: %s", esp_err_to_name(influx_ret));
         vTaskDelete(NULL);
         return;
     }
+
+
+
+
+
 
     // Test InfluxDB connection
     ESP_LOGI(TAG, "Testing InfluxDB connection...");
@@ -78,21 +75,34 @@ static void influx_demo_task(void *arg)
         ESP_LOGW(TAG, "⚠️ InfluxDB connection test failed (status: %d)", conn_status);
     }
 
+
+
+
+    // Minimal InfluxDB test packet
+    ESP_LOGI(TAG, "Sending minimal InfluxDB test packet...");
+    const char* minimal_line = "test,device=ESP32_TEST value=1.23";
+    extern esp_err_t influxdb_send_line_protocol(const char* line_protocol); // Forward declaration if needed
+    esp_err_t min_result = influxdb_send_line_protocol(minimal_line);
+    if (min_result == ESP_OK) {
+        ESP_LOGI(TAG, "✅ Minimal test packet sent successfully!");
+    } else {
+        ESP_LOGE(TAG, "❌ Minimal test packet failed!");
+    }
+
+
+
+
     // Create and send a simple test data packet
     ESP_LOGI(TAG, "Creating and sending test InfluxDB packet...");
 
-    // Create test soil moisture data
     influxdb_soil_data_t test_data = {
         .timestamp_ns = 0,          // No timestamp - let InfluxDB use server time
         .voltage = 2.50f,           // Test voltage value
         .moisture_percent = 42.5f,  // Test moisture percentage
         .raw_adc = 2048,            // Test ADC reading
+        .device_id = "ESP32_TEST",  // Device ID for testing
     };
 
-    // Set device ID
-    strncpy(test_data.device_id, "ESP32_TEST", sizeof(test_data.device_id) - 1);
-
-    // Send the test data
     influxdb_response_status_t send_status = influxdb_write_soil_data(&test_data);
     if (send_status == INFLUXDB_RESPONSE_OK) {
         ESP_LOGI(TAG, "✅ Test InfluxDB packet sent successfully!");
@@ -102,6 +112,9 @@ static void influx_demo_task(void *arg)
         ESP_LOGE(TAG, "❌ Failed to send InfluxDB packet (status: %d)", send_status);
         ESP_LOGI(TAG, "HTTP Status Code: %d", influxdb_get_last_status_code());
     }
+
+
+    
 
     // Keep the connection alive and demonstrate periodic data sending
     ESP_LOGI(TAG, "InfluxDB client ready - starting periodic test data transmission...");

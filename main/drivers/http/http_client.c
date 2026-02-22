@@ -15,7 +15,7 @@ static const char *TAG = "HTTPClient";
 // Static variables
 static http_client_config_t s_config;
 static int s_last_status_code = 0;
-static bool s_initialized = false;
+static bool is_initialized = false;
 static esp_http_client_handle_t s_persistent_client = NULL;
 
 // Forward declarations
@@ -51,7 +51,7 @@ esp_err_t http_client_init(const http_client_config_t* config)
         return ESP_FAIL;
     }
 
-    s_initialized = true;
+    is_initialized = true;
     
     // Initialize HTTP buffer
     http_buffer_config_t buffer_config = {
@@ -80,14 +80,14 @@ esp_err_t http_client_deinit(void)
     // Deinitialize HTTP buffer
     http_buffer_deinit();
     
-    s_initialized = false;
+    is_initialized = false;
     ESP_LOGI(TAG, "HTTP client deinitialized");
     return ESP_OK;
 }
 
 http_response_status_t http_client_send_json(const char* json_payload)
 {
-    if (!s_initialized || json_payload == NULL || s_persistent_client == NULL) {
+    if (!is_initialized || json_payload == NULL || s_persistent_client == NULL) {
         return HTTP_RESPONSE_ERROR;
     }
 
@@ -149,7 +149,7 @@ http_response_status_t http_client_send_json(const char* json_payload)
 
 http_response_status_t http_client_test_connection(void)
 {
-    if (!s_initialized) {
+    if (!is_initialized) {
         return HTTP_RESPONSE_ERROR;
     }
 
@@ -214,7 +214,7 @@ static esp_err_t http_send_callback(const char* json_payload)
 
 http_response_status_t http_client_send_json_buffered(const char* json_payload)
 {
-    if (!s_initialized || json_payload == NULL) {
+    if (!is_initialized || json_payload == NULL) {
         return HTTP_RESPONSE_ERROR;
     }
 
@@ -265,7 +265,7 @@ esp_err_t http_client_clear_buffered_packets(void)
 
 bool http_client_ping_server(void)
 {
-    if (!s_initialized) {
+    if (!is_initialized) {
         return false;
     }
 

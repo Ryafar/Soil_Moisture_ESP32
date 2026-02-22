@@ -115,6 +115,16 @@ esp_err_t wifi_manager_connect(void)
                                            portMAX_DELAY);
 
     if (bits & WIFI_CONNECTED_BIT) {
+        // Get and log IP information
+        esp_netif_ip_info_t ip_info;
+        esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        if (netif != NULL && esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+            ESP_LOGI(TAG, "=== NETWORK DIAGNOSTICS ===");
+            ESP_LOGI(TAG, "ESP32 IP: " IPSTR, IP2STR(&ip_info.ip));
+            ESP_LOGI(TAG, "Gateway: " IPSTR, IP2STR(&ip_info.gw));
+            ESP_LOGI(TAG, "Netmask: " IPSTR, IP2STR(&ip_info.netmask));
+            ESP_LOGI(TAG, "========================");
+        }
         return ESP_OK;
     } else if (bits & WIFI_FAIL_BIT) {
         return ESP_FAIL;

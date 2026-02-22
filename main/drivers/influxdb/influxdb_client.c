@@ -1,4 +1,3 @@
-
 #include "influxdb_client.h"
 #include "../../config/esp32-config.h"
 #if INFLUXDB_USE_HTTPS
@@ -17,12 +16,12 @@ static const char *TAG = "InfluxDBClient";
 // Static variables
 static influxdb_client_config_t s_config;
 static int s_last_status_code = 0;
-static bool s_initialized = false;
+static bool is_initialized = false;
 static esp_http_client_handle_t s_client = NULL;
 
 // Forward declarations
 static esp_err_t influxdb_event_handler(esp_http_client_event_t *evt);
-static esp_err_t influxdb_send_line_protocol(const char* line_protocol);
+esp_err_t influxdb_send_line_protocol(const char* line_protocol);
 
 esp_err_t influxdb_client_init(const influxdb_client_config_t* config)
 {
@@ -64,7 +63,7 @@ esp_err_t influxdb_client_init(const influxdb_client_config_t* config)
         return ESP_FAIL;
     }
 
-    s_initialized = true;
+    is_initialized = true;
     
     ESP_LOGI(TAG, "InfluxDB client initialized for server %s:%d", 
              s_config.server, s_config.port);
@@ -82,41 +81,44 @@ esp_err_t influxdb_client_deinit(void)
         s_client = NULL;
     }
     
-    s_initialized = false;
+    is_initialized = false;
     ESP_LOGI(TAG, "InfluxDB client deinitialized");
     return ESP_OK;
 }
 
 influxdb_response_status_t influxdb_write_soil_data(const influxdb_soil_data_t* data)
 {
-    if (!s_initialized || data == NULL) {
+    if (!is_initialized || data == NULL) {
         return INFLUXDB_RESPONSE_ERROR;
     }
 
     // Create InfluxDB line protocol format
     // soil_moisture,device=ESP32_XXXXXX voltage=2.5,moisture_percent=45.2,raw_adc=2048 [timestamp]
     char line_protocol[512];
-    
-#if NTP_ENABLED
-    // With NTP: Include timestamp in nanoseconds
-    snprintf(line_protocol, sizeof(line_protocol),
-        "soil_moisture,device=%s voltage=%.3f,moisture_percent=%.2f,raw_adc=%d %llu",
-        data->device_id,
-        data->voltage,
-        data->moisture_percent,
-        data->raw_adc,
-        data->timestamp_ns
-    );
-#else
-    // Without NTP: Let InfluxDB use server time (omit timestamp)
-    snprintf(line_protocol, sizeof(line_protocol),
-        "soil_moisture,device=%s voltage=%.3f,moisture_percent=%.2f,raw_adc=%d",
-        data->device_id,
-        data->voltage,
-        data->moisture_percent,
-        data->raw_adc
-    );
+
+    if (data->timestamp_ns == 0) {
+        // No timestamp provided - let InfluxDB use server time
+        snprintf(line_protocol, sizeof(line_protocol),
+            "soil_moisture,device=%s voltage=%.3f,moisture_percent=%.2f,raw_adc=%d",
+            data->device_id,
+            data->voltage,
+            data->moisture_percent,
+            data->raw_adc
+        );
+    } else {
+#if NTP_ENABLED == 0
+        ESP_LOGW(TAG, "Timestamp provided, but NTP is disabled: %llu", data->timestamp_ns);
+        ESP_LOGW(TAG, "InfluxDB will place the data in the past or ignore it. Consider enabling NTP for accurate timestamps.");
 #endif
+        snprintf(line_protocol, sizeof(line_protocol),
+            "soil_moisture,device=%s voltage=%.3f,moisture_percent=%.2f,raw_adc=%d %llu",
+            data->device_id,
+            data->voltage,
+            data->moisture_percent,
+            data->raw_adc,
+            data->timestamp_ns
+        );
+    }
 
     // ESP_LOGI(TAG, "Soil data line protocol: %s", line_protocol);
 
@@ -130,51 +132,56 @@ influxdb_response_status_t influxdb_write_soil_data(const influxdb_soil_data_t* 
 
 influxdb_response_status_t influxdb_write_battery_data(const influxdb_battery_data_t* data)
 {
-    if (!s_initialized || data == NULL) {
+    if (!is_initialized || data == NULL) {
         return INFLUXDB_RESPONSE_ERROR;
     }
 
     // Create InfluxDB line protocol format
     // battery,device=ESP32_XXXXXX voltage=3.7,percentage=85.0 [timestamp]
     char line_protocol[512];
+
+    if (data->timestamp_ns == 0) {
+        // No timestamp provided - let InfluxDB use server time
+        if (data->percentage >= 0) {
+            snprintf(line_protocol, sizeof(line_protocol),
+                "battery,device=%s voltage=%.3f,percentage=%.1f",
+                data->device_id,
+                data->voltage,
+                data->percentage
+            );
+        } else {
+            // No percentage available
+            snprintf(line_protocol, sizeof(line_protocol),
+                "battery,device=%s voltage=%.3f",
+                data->device_id,
+                data->voltage
+            );
+        }
+    } else {
     
-#if NTP_ENABLED
-    // With NTP: Include timestamp
-    if (data->percentage >= 0) {
-        snprintf(line_protocol, sizeof(line_protocol),
-            "battery,device=%s voltage=%.3f,percentage=%.1f %llu",
-            data->device_id,
-            data->voltage,
-            data->percentage,
-            data->timestamp_ns
-        );
-    } else {
-        // No percentage available
-        snprintf(line_protocol, sizeof(line_protocol),
-            "battery,device=%s voltage=%.3f %llu",
-            data->device_id,
-            data->voltage,
-            data->timestamp_ns
-        );
+#if NTP_ENABLED == 0
+        ESP_LOGW(TAG, "Timestamp provided, but NTP is disabled: %llu", data->timestamp_ns);
+        ESP_LOGW(TAG, "InfluxDB will place the data in the past or ignore it. Consider enabling NTP for accurate timestamps.");
+#endif  
+        // With NTP: Include timestamp
+        if (data->percentage >= 0) {
+            snprintf(line_protocol, sizeof(line_protocol),
+                "battery,device=%s voltage=%.3f,percentage=%.1f %llu",
+                data->device_id,
+                data->voltage,
+                data->percentage,
+                data->timestamp_ns
+            );
+        } else {
+            // No percentage available
+            snprintf(line_protocol, sizeof(line_protocol),
+                "battery,device=%s voltage=%.3f %llu",
+                data->device_id,
+                data->voltage,
+                data->timestamp_ns
+            );
+        }
     }
-#else
-    // Without NTP: Let InfluxDB use server time (omit timestamp)
-    if (data->percentage >= 0) {
-        snprintf(line_protocol, sizeof(line_protocol),
-            "battery,device=%s voltage=%.3f,percentage=%.1f",
-            data->device_id,
-            data->voltage,
-            data->percentage
-        );
-    } else {
-        // No percentage available
-        snprintf(line_protocol, sizeof(line_protocol),
-            "battery,device=%s voltage=%.3f",
-            data->device_id,
-            data->voltage
-        );
-    }
-#endif
 
     // ESP_LOGD(TAG, "Battery data line protocol: %s", line_protocol);
 
@@ -186,9 +193,9 @@ influxdb_response_status_t influxdb_write_battery_data(const influxdb_battery_da
     }
 }
 
-static esp_err_t influxdb_send_line_protocol(const char* line_protocol)
+esp_err_t influxdb_send_line_protocol(const char* line_protocol)
 {
-    if (!s_initialized || line_protocol == NULL || s_client == NULL) {
+    if (!is_initialized || line_protocol == NULL || s_client == NULL) {
         return ESP_FAIL;
     }
 
@@ -335,7 +342,7 @@ static bool influxdb_test_socket_connection(void)
 
 influxdb_response_status_t influxdb_test_connection(void)
 {
-    if (!s_initialized) {
+    if (!is_initialized) {
         return INFLUXDB_RESPONSE_ERROR;
     }
 

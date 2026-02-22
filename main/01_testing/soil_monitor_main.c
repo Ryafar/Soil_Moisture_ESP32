@@ -9,14 +9,13 @@ void app_main(void) {
     ESP_LOGI(TAG, "Starting Soil Moisture Monitoring Testing");
 
     // Initialize components
-    csm_v2_driver_t sensor_driver;
     csm_v2_config_t sensor_config;
-    csm_v2_get_default_config(&sensor_config, SOIL_ADC_UNIT, SOIL_ADC_CHANNEL);
-    csm_v2_init(&sensor_driver, &sensor_config);
+    csm_v2_get_default_config(&sensor_config, SOIL_ADC_UNIT, SOIL_ADC_CHANNEL, -1);
+    csm_v2_init(&sensor_config);
 
     while(1) {
         csm_v2_reading_t reading;
-        csm_v2_read(&sensor_driver, &reading);
+        csm_v2_read(&reading);
 
         ESP_LOGI(TAG, "Soil Moisture Reading:");
         ESP_LOGI(TAG, "Timestamp: %llu", reading.timestamp);
@@ -28,5 +27,5 @@ void app_main(void) {
     }
 
     // Cleanup
-    csm_v2_deinit(&sensor_driver);
+    csm_v2_deinit();
 }
