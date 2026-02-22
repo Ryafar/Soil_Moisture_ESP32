@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "soc/soc_caps.h"
 #include <string.h>
+#include "esp_adc_cal.h"
 
 static const char* TAG = "ADC_SHARED";
 
@@ -141,6 +142,8 @@ esp_err_t adc_shared_add_channel(adc_unit_t unit, adc_channel_t channel,
     shared_unit->channels[channel].bitwidth = bitwidth;
     shared_unit->channels[channel].attenuation = attenuation;
     shared_unit->channels[channel].reference_voltage = reference_voltage;
+    // Characterize ADC for this channel (default_vref = 1100 mV, esp_adc_cal will read efuse if available)
+    esp_adc_cal_characterize(unit, attenuation, bitwidth, 1100, &shared_unit->channels[channel].charac);
     shared_unit->channels[channel].is_configured = true;
     
     ESP_LOGI(TAG, "ADC channel %d configured on unit %d successfully", channel, unit);
@@ -206,28 +209,9 @@ esp_err_t adc_shared_read_voltage(adc_unit_t unit, adc_channel_t channel, float*
     
     adc_shared_channel_config_t* ch_config = &shared_unit->channels[channel];
     
-    // Calculate maximum ADC value based on bitwidth
-    int max_adc_value;
-    switch (ch_config->bitwidth) {
-        case ADC_BITWIDTH_9:
-            max_adc_value = 511;
-            break;
-        case ADC_BITWIDTH_10:
-            max_adc_value = 1023;
-            break;
-        case ADC_BITWIDTH_11:
-            max_adc_value = 2047;
-            break;
-        case ADC_BITWIDTH_12:
-            max_adc_value = 4095;
-            break;
-        default:
-            max_adc_value = 4095;  // Default to 12-bit
-            break;
-    }
-    
-    // Convert to voltage
-    *voltage = ((float)raw_value / (float)max_adc_value) * ch_config->reference_voltage;
+    // Convert raw ADC value to voltage using esp_adc_cal for proper calibration
+    uint32_t voltage_mv = esp_adc_cal_raw_to_voltage((uint32_t)raw_value, &ch_config->charac);
+    *voltage = ((float)voltage_mv) / 1000.0f; // voltage at ADC pin in volts
     
     ESP_LOGD(TAG, "ADC unit %d channel %d: Raw: %d, Voltage: %.3f V", unit, channel, raw_value, *voltage);
     return ESP_OK;

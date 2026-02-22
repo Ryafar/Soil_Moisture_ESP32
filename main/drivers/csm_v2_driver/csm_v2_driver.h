@@ -13,6 +13,7 @@
 #include "esp_err.h"
 #include "driver/gpio.h"
 
+#include "config/esp32-config.h"
 #include "utils/esp_utils.h"
 #include "../adc/adc_manager.h"
 
