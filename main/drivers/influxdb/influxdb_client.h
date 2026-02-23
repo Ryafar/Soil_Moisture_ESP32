@@ -18,6 +18,7 @@
 #include "esp_log.h"
 #include <string.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 /**
  * @brief InfluxDB client configuration
@@ -81,22 +82,6 @@ esp_err_t influxdb_client_init(const influxdb_client_config_t* config);
 esp_err_t influxdb_client_deinit(void);
 
 /**
- * @brief Write soil moisture data to InfluxDB
- * 
- * @param data Soil moisture measurement data
- * @return influxdb_response_status_t Response status
- */
-influxdb_response_status_t influxdb_write_soil_data(const influxdb_soil_data_t* data);
-
-/**
- * @brief Write battery data to InfluxDB
- * 
- * @param data Battery measurement data
- * @return influxdb_response_status_t Response status
- */
-influxdb_response_status_t influxdb_write_battery_data(const influxdb_battery_data_t* data);
-
-/**
  * @brief Test InfluxDB connection
  * 
  * @return influxdb_response_status_t Connection status
@@ -114,5 +99,12 @@ int influxdb_get_last_status_code(void);
  * @brief Send a raw InfluxDB line protocol string (for testing/debug)
  */
 esp_err_t influxdb_send_line_protocol(const char* line_protocol);
+
+/**
+ * @brief Query whether the InfluxDB client has been initialized
+ *
+ * @return true if initialized, false otherwise
+ */
+bool influxdb_client_is_initialized(void);
 
 #endif // INFLUXDB_CLIENT_H

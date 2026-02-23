@@ -1,4 +1,18 @@
-#include "influx_sender.h"
+
+
+
+
+
+// ! This file is most likely broken
+// ! Check the implementation before using it
+// ! Make sure the queue is working properly, last time it did not
+
+
+
+
+
+
+#include "influxdb_sender.h"
 #include "esp_log.h"
 #include "string.h"
 
@@ -6,7 +20,7 @@
 #define INFLUX_SENDER_PRIO    5
 #define INFLUX_QUEUE_LEN      10
 
-static const char* TAG = "INFLUX_SENDER";
+static const char* TAG = "INFLUXDB_SENDER_TASK";
 
 typedef enum {
     INFLUX_MSG_SOIL,

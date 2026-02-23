@@ -25,13 +25,13 @@
 #define SOIL_ADC_UNIT           ADC_UNIT_1
 #define SOIL_ADC_CHANNEL        ADC_CHANNEL_0
 #define SOIL_ADC_BITWIDTH       ADC_BITWIDTH_12
-#define SOIL_ADC_ATTENUATION    ADC_ATTEN_DB_11
+#define SOIL_ADC_ATTENUATION    ADC_ATTEN_DB_12
 #define SOIL_ADC_VREF           3.3f
 
 #define BATTERY_ADC_UNIT        ADC_UNIT_1
 #define BATTERY_ADC_CHANNEL     ADC_CHANNEL_3
 #define BATTERY_ADC_BITWIDTH    ADC_BITWIDTH_12
-#define BATTERY_ADC_ATTENUATION ADC_ATTEN_DB_11 // 0 - 2.45v range (suitable for voltage divider)
+#define BATTERY_ADC_ATTENUATION ADC_ATTEN_DB_12 // 0 - 2.45v range (suitable for voltage divider)
 #define BATTERY_ADC_VREF        3.3f
 
 // ============================================================================
@@ -54,6 +54,7 @@
 #define BATTERY_MONITOR_TASK_PRIORITY      5
 #define BATTERY_MONITOR_TASK_NAME          "battery_monitor"
 #define BATTERY_MONITOR_MEASUREMENT_INTERVAL_MS    10 * 1000
+#define BATTERY_MONITOR_HIGH_VOLTAGE    4.2f
 #define BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD      3.2f
 #define BATTERY_MONITOR_VOLTAGE_SCALE_FACTOR      2.0f  // 1-1 voltage divider
 #define BATTERY_MONITOR_USE_DEEP_SLEEP_ON_LOW_BATTERY 1

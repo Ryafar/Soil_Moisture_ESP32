@@ -86,116 +86,11 @@ esp_err_t influxdb_client_deinit(void)
     return ESP_OK;
 }
 
-influxdb_response_status_t influxdb_write_soil_data(const influxdb_soil_data_t* data)
-{
-    if (!is_initialized || data == NULL) {
-        return INFLUXDB_RESPONSE_ERROR;
-    }
-
-    // Create InfluxDB line protocol format
-    // soil_moisture,device=ESP32_XXXXXX voltage=2.5,moisture_percent=45.2,raw_adc=2048 [timestamp]
-    char line_protocol[512];
-
-    if (data->timestamp_ns == 0) {
-        // No timestamp provided - let InfluxDB use server time
-        snprintf(line_protocol, sizeof(line_protocol),
-            "soil_moisture,device=%s voltage=%.3f,moisture_percent=%.2f,raw_adc=%d",
-            data->device_id,
-            data->voltage,
-            data->moisture_percent,
-            data->raw_adc
-        );
-    } else {
-#if NTP_ENABLED == 0
-        ESP_LOGW(TAG, "Timestamp provided, but NTP is disabled: %llu", data->timestamp_ns);
-        ESP_LOGW(TAG, "InfluxDB will place the data in the past or ignore it. Consider enabling NTP for accurate timestamps.");
-#endif
-        snprintf(line_protocol, sizeof(line_protocol),
-            "soil_moisture,device=%s voltage=%.3f,moisture_percent=%.2f,raw_adc=%d %llu",
-            data->device_id,
-            data->voltage,
-            data->moisture_percent,
-            data->raw_adc,
-            data->timestamp_ns
-        );
-    }
-
-    // ESP_LOGI(TAG, "Soil data line protocol: %s", line_protocol);
-
-    esp_err_t result = influxdb_send_line_protocol(line_protocol);
-    if (result == ESP_OK) {
-        return INFLUXDB_RESPONSE_OK;
-    } else {
-        return INFLUXDB_RESPONSE_ERROR;
-    }
-}
-
-influxdb_response_status_t influxdb_write_battery_data(const influxdb_battery_data_t* data)
-{
-    if (!is_initialized || data == NULL) {
-        return INFLUXDB_RESPONSE_ERROR;
-    }
-
-    // Create InfluxDB line protocol format
-    // battery,device=ESP32_XXXXXX voltage=3.7,percentage=85.0 [timestamp]
-    char line_protocol[512];
-
-    if (data->timestamp_ns == 0) {
-        // No timestamp provided - let InfluxDB use server time
-        if (data->percentage >= 0) {
-            snprintf(line_protocol, sizeof(line_protocol),
-                "battery,device=%s voltage=%.3f,percentage=%.1f",
-                data->device_id,
-                data->voltage,
-                data->percentage
-            );
-        } else {
-            // No percentage available
-            snprintf(line_protocol, sizeof(line_protocol),
-                "battery,device=%s voltage=%.3f",
-                data->device_id,
-                data->voltage
-            );
-        }
-    } else {
-    
-#if NTP_ENABLED == 0
-        ESP_LOGW(TAG, "Timestamp provided, but NTP is disabled: %llu", data->timestamp_ns);
-        ESP_LOGW(TAG, "InfluxDB will place the data in the past or ignore it. Consider enabling NTP for accurate timestamps.");
-#endif  
-        // With NTP: Include timestamp
-        if (data->percentage >= 0) {
-            snprintf(line_protocol, sizeof(line_protocol),
-                "battery,device=%s voltage=%.3f,percentage=%.1f %llu",
-                data->device_id,
-                data->voltage,
-                data->percentage,
-                data->timestamp_ns
-            );
-        } else {
-            // No percentage available
-            snprintf(line_protocol, sizeof(line_protocol),
-                "battery,device=%s voltage=%.3f %llu",
-                data->device_id,
-                data->voltage,
-                data->timestamp_ns
-            );
-        }
-    }
-
-    // ESP_LOGD(TAG, "Battery data line protocol: %s", line_protocol);
-
-    esp_err_t result = influxdb_send_line_protocol(line_protocol);
-    if (result == ESP_OK) {
-        return INFLUXDB_RESPONSE_OK;
-    } else {
-        return INFLUXDB_RESPONSE_ERROR;
-    }
-}
 
 esp_err_t influxdb_send_line_protocol(const char* line_protocol)
 {
     if (!is_initialized || line_protocol == NULL || s_client == NULL) {
+        ESP_LOGE(TAG, "InfluxDB client not initialized or invalid line protocol variable");
         return ESP_FAIL;
     }
 
@@ -222,31 +117,32 @@ esp_err_t influxdb_send_line_protocol(const char* line_protocol)
 #endif
 
     // Set the URL for this request
-    esp_http_client_set_url(s_client, full_url);
+    esp_err_t err = ESP_OK;
+    err |= esp_http_client_set_url(s_client, full_url);
 
     // Set headers
-    esp_http_client_set_header(s_client, "Content-Type", "text/plain; charset=utf-8");
-    esp_http_client_set_header(s_client, "Accept", "application/json");
+    err |= esp_http_client_set_header(s_client, "Content-Type", "text/plain; charset=utf-8");
+    err |= esp_http_client_set_header(s_client, "Accept", "application/json");
     
     // Set authorization header if token is provided
     if (strlen(s_config.token) > 0) {
         char auth_header[512];
         snprintf(auth_header, sizeof(auth_header), "Token %s", s_config.token);
-        esp_http_client_set_header(s_client, "Authorization", auth_header);
+        err |= esp_http_client_set_header(s_client, "Authorization", auth_header);
     }
 
     // Set payload
-    esp_http_client_set_post_field(s_client, line_protocol, strlen(line_protocol));
-
-    // ESP_LOGI(TAG, "Sending to InfluxDB: %s", full_url);
-    // ESP_LOGD(TAG, "Payload: %s", line_protocol);
+    err |= esp_http_client_set_post_field(s_client, line_protocol, strlen(line_protocol));
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set up InfluxDB HTTP request: %s", esp_err_to_name(err));
+        return err;
+    }
 
     esp_err_t result = ESP_FAIL;
     int retry_count = 0;
 
     while (retry_count <= s_config.max_retries) {
         esp_err_t err = esp_http_client_perform(s_client);
-        
         if (err == ESP_OK) {
             s_last_status_code = esp_http_client_get_status_code(s_client);
             ESP_LOGD(TAG, "InfluxDB POST Status = %d", s_last_status_code);
@@ -430,6 +326,11 @@ influxdb_response_status_t influxdb_test_connection(void)
 int influxdb_get_last_status_code(void)
 {
     return s_last_status_code;
+}
+
+bool influxdb_client_is_initialized(void)
+{
+    return is_initialized;
 }
 
 static esp_err_t influxdb_event_handler(esp_http_client_event_t *evt)

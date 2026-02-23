@@ -11,8 +11,6 @@
 #include "application/battery_monitor.h"
 #include "drivers/csm_v2_driver/csm_v2_driver.h"
 #include "drivers/wifi/wifi_manager.h"
-#include "drivers/mqtt/my_mqtt_driver.h"
-#include "application/mqtt_sender.h"
 #include "utils/esp_utils.h"
 #include "utils/ntp_time.h"
 #include "esp_mac.h"
@@ -22,6 +20,16 @@
 #include "freertos/task.h"
 #include "esp_timer.h"
 #include <string.h>
+
+#if USE_MQTT
+#include "drivers/mqtt/my_mqtt_driver.h"
+#include "application/mqtt_sender.h"
+#endif
+
+#if USE_INFLUXDB
+#include "drivers/influxdb/influxdb_client.h"
+#include "application/influxdb_sender.h"
+#endif
 
 static const char *TAG = "MAIN";
 
@@ -82,7 +90,7 @@ static void measurement_task(void* pvParameters) {
     battery_monitor_init();
 
 
-#if USE_MQTT
+#if USE_MQTT || USE_INFLUXDB
     // Initialize WiFi 
     ESP_LOGI(TAG, "Initializing WiFi...");
     wifi_manager_config_t wifi_config = {
@@ -93,6 +101,7 @@ static void measurement_task(void* pvParameters) {
     wifi_manager_init(&wifi_config, NULL);
 
 
+#if USE_MQTT
     // Initialize MQTT client
     mqtt_client_config_t mqtt_config = {
         .broker_uri = MQTT_BROKER_URI,
@@ -105,7 +114,24 @@ static void measurement_task(void* pvParameters) {
         .use_ssl = MQTT_USE_SSL,
     };
     mqtt_client_init(&mqtt_config);
-#endif
+#endif // USE_MQTT
+
+#if USE_INFLUXDB
+    // Initialize InfluxDB client
+    influxdb_client_config_t influxdb_config = {
+        .server = INFLUXDB_SERVER,
+        .port = INFLUXDB_PORT,
+        .bucket = INFLUXDB_BUCKET,
+        .org = INFLUXDB_ORG,
+        .token = INFLUXDB_TOKEN,
+        .endpoint = INFLUXDB_ENDPOINT,
+        .timeout_ms = 10000,
+        .max_retries = 3
+    };
+    influxdb_client_init(&influxdb_config);
+#endif // USE_INFLUXDB
+
+#endif // USE_MQTT || USE_INFLUXDB
 
 
 
@@ -173,35 +199,70 @@ static void measurement_task(void* pvParameters) {
     // ######################################################
  
 
-#if USE_MQTT
+#if USE_MQTT || USE_INFLUXDB
     wifi_manager_connect();
-    mqtt_client_connect();
 
+    uint64_t timestamp_ms = 0;
+
+#if NTP_ENABLED
     // NTP time sync (optional, can be skipped if not needed for timestamps)
     ntp_time_init(NULL);
     ntp_time_wait_for_sync(30000);  // 30 seconds timeout
-        
-    uint64_t timestamp_ms = ntp_time_get_timestamp_ms();
 
-    mqtt_battery_data_t bdata = {0};
-    bdata.timestamp_ms = timestamp_ms;
-    bdata.voltage = battery_voltage_mean;
-    bdata.percentage = 0.0f;
-    strncpy(bdata.device_id, device_id, sizeof(bdata.device_id) - 1);
-    mqtt_publish_battery_data(&bdata);
+    timestamp_ms = ntp_time_get_timestamp_ms();
+#endif // NTP_ENABLED
 
-    mqtt_soil_data_t sdata = {0};
-    sdata.timestamp_ms = timestamp_ms;
-    sdata.voltage = soil_reading_mean.voltage;
-    sdata.moisture_percent = soil_reading_mean.moisture_percent;
-    sdata.raw_adc = soil_reading_mean.raw_adc;
-    strncpy(sdata.device_id, device_id, sizeof(sdata.device_id) - 1);
-    mqtt_publish_soil_data(&sdata);
+#if USE_MQTT
+    mqtt_client_connect();
+
+    mqtt_battery_data_t mqtt_bdata = {
+        .timestamp_ms = timestamp_ms,
+        .voltage = battery_voltage_mean,
+        .percentage = 0.0f, // Placeholder, calculate if you have percentage info
+    };
+    strncpy(mqtt_bdata.device_id, device_id, sizeof(mqtt_bdata.device_id) - 1);
+    mqtt_publish_battery_data(&mqtt_bdata);
+
+    mqtt_soil_data_t mqtt_sdata = {
+        .timestamp_ms = timestamp_ms,
+        .voltage = soil_reading_mean.voltage,
+        .moisture_percent = soil_reading_mean.moisture_percent,
+        .raw_adc = soil_reading_mean.raw_adc,
+    };
+    strncpy(mqtt_sdata.device_id, device_id, sizeof(mqtt_sdata.device_id) - 1);
+    mqtt_publish_soil_data(&mqtt_sdata);
+
+    mqtt_sdata.voltage = soil_reading_mean.voltage;
+    mqtt_sdata.moisture_percent = soil_reading_mean.moisture_percent;
+    mqtt_sdata.raw_adc = soil_reading_mean.raw_adc;
+    strncpy(mqtt_sdata.device_id, device_id, sizeof(mqtt_sdata.device_id) - 1);
+    mqtt_publish_soil_data(&mqtt_sdata);
 
     mqtt_client_wait_published(5000);  // Wait up to 5 seconds for messages to be published
     mqtt_client_disconnect();
-    wifi_manager_disconnect();
-#endif
+#endif // USE_MQTT
+
+#if USE_INFLUXDB
+    influxdb_battery_data_t influx_bdata = {
+        .timestamp_ns = timestamp_ms * 1000000ULL, // Convert ms to ns
+        .voltage = battery_voltage_mean,
+        .percentage = 0.0f,
+    };
+    strncpy(influx_bdata.device_id, device_id, sizeof(influx_bdata.device_id) - 1);
+    influxdb_write_battery_data(&influx_bdata);
+
+    influxdb_soil_data_t influx_sdata = {
+        .timestamp_ns = timestamp_ms * 1000000ULL, // Convert ms to ns
+        .voltage = soil_reading_mean.voltage,
+        .moisture_percent = soil_reading_mean.moisture_percent,
+        .raw_adc = soil_reading_mean.raw_adc
+    };
+    strncpy(influx_sdata.device_id, device_id, sizeof(influx_sdata.device_id) - 1);
+    influxdb_write_soil_data(&influx_sdata);
+#endif // USE_INFLUXDB
+
+    wifi_manager_disconnect();      
+#endif // USE_MQTT || USE_INFLUXDB
 
     
     // ######################################################
