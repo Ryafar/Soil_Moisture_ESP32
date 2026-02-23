@@ -144,25 +144,28 @@ static void measurement_task(void* pvParameters) {
 
     ESP_LOGI(TAG, "Starting main measurement loop...");
 
-    float battery_voltage_mean = 0.0f;
+    battery_data_t battery_voltage_mean = {0};
     csm_v2_reading_t soil_reading_mean = {0};
 
     { // Measuring
         ESP_LOGI(TAG, "=== Measurement Cycle ===");
 
         // ======== Measure Battery ========
-        float battery_voltage_sum = 0.0f;
+        battery_data_t battery_voltage_sum = {0};
         int nr_measurements = 0;
         ret = ESP_OK;
 
         while (nr_measurements < BATTERY_ADC_MEASUREMENTS) {
             ret |= battery_monitor_measure(&battery_voltage_mean);
-            battery_voltage_sum += battery_voltage_mean;
+            battery_voltage_sum.voltage += battery_voltage_mean.voltage;
+            battery_voltage_sum.percentage += battery_voltage_mean.percentage;
             nr_measurements++;
         }
         if (ret == ESP_OK) {
-            battery_voltage_mean = battery_voltage_sum / nr_measurements;
-            ESP_LOGI(TAG, "Battery Voltage: %.3f V (average of %d measurements)", battery_voltage_mean, nr_measurements);
+            battery_voltage_mean.voltage = battery_voltage_sum.voltage / nr_measurements;
+            battery_voltage_mean.percentage = battery_voltage_sum.percentage / nr_measurements;
+            ESP_LOGI(TAG, "Battery Voltage: %.3f V | Percentage: %.1f%% (average of %d measurements)", 
+                     battery_voltage_mean.voltage, battery_voltage_mean.percentage, nr_measurements);
         } else {
             ESP_LOGE(TAG, "Failed to measure battery voltage: %s", esp_err_to_name(ret));
         }
@@ -217,8 +220,8 @@ static void measurement_task(void* pvParameters) {
 
     mqtt_battery_data_t mqtt_bdata = {
         .timestamp_ms = timestamp_ms,
-        .voltage = battery_voltage_mean,
-        .percentage = 0.0f, // Placeholder, calculate if you have percentage info
+        .voltage = battery_voltage_mean.voltage,
+        .percentage = battery_voltage_mean.percentage,
     };
     strncpy(mqtt_bdata.device_id, device_id, sizeof(mqtt_bdata.device_id) - 1);
     mqtt_publish_battery_data(&mqtt_bdata);
@@ -245,8 +248,8 @@ static void measurement_task(void* pvParameters) {
 #if USE_INFLUXDB
     influxdb_battery_data_t influx_bdata = {
         .timestamp_ns = timestamp_ms * 1000000ULL, // Convert ms to ns
-        .voltage = battery_voltage_mean,
-        .percentage = 0.0f,
+        .voltage = battery_voltage_mean.voltage,
+        .percentage = battery_voltage_mean.percentage,
     };
     strncpy(influx_bdata.device_id, device_id, sizeof(influx_bdata.device_id) - 1);
     influxdb_write_battery_data(&influx_bdata);

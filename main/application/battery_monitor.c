@@ -72,8 +72,8 @@ esp_err_t battery_monitor_deinit() {
  * @param voltage Pointer to store the measured voltage
  * @return ESP_OK on success, error code otherwise
  */
-esp_err_t battery_monitor_measure(float* voltage) {
-    if (voltage == NULL) {
+esp_err_t battery_monitor_measure(battery_data_t* data) {
+    if (data == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -85,6 +85,11 @@ esp_err_t battery_monitor_measure(float* voltage) {
     }
 
     // Apply voltage scale factor (for voltage divider)
-    *voltage = raw_voltage * BATTERY_MONITOR_VOLTAGE_SCALE_FACTOR;
+    data->voltage = raw_voltage * BATTERY_MONITOR_VOLTAGE_SCALE_FACTOR;
+
+    // Calculate battery percentage
+    data->percentage = ((data->voltage - BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD) / 
+                        (BATTERY_MONITOR_HIGH_VOLTAGE - BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD)) * 100.0f;
+
     return ESP_OK;
 }

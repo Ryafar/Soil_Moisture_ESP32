@@ -7,6 +7,12 @@
 #include "../drivers/led/led.h"
 #include "../config/esp32-config.h"
 
+
+typedef struct {
+    float voltage;                  ///< Battery voltage
+    float percentage;               ///< Battery percentage (if available)
+} battery_data_t;
+
 /**
  * @brief Initialize battery monitoring (init ADC, etc.)
  * @return ESP_OK on success, error code otherwise
@@ -21,9 +27,9 @@ esp_err_t battery_monitor_deinit();
 
 /**
  * @brief Measure battery voltage and return the measurement
- * @param voltage Pointer to store the measured voltage
+ * @param data Pointer to store the measured battery data
  * @return ESP_OK on success, error code otherwise
  */
-esp_err_t battery_monitor_measure(float* voltage);
+esp_err_t battery_monitor_measure(battery_data_t* data);
 
 #endif // BATTERY_MONITOR_TASK_H
