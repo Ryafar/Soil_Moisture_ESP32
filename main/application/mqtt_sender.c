@@ -114,11 +114,11 @@ static mqtt_client_status_t publish_ha_discovery(
     // char full_name[64];
     // snprintf(full_name, sizeof(full_name), "%s %s", device_id, name);
 
-    // char unique_id[64];
-    // snprintf(unique_id, sizeof(unique_id), "%s_%s", device_id, entity_id);
+    char unique_id[64];
+    snprintf(unique_id, sizeof(unique_id), "%s_%s", device_id, entity_id);
 
     cJSON_AddStringToObject(root, "name", name);
-    cJSON_AddStringToObject(root, "unique_id", entity_id); // entity_id in homeassistant is (device_name + unique_id)
+    cJSON_AddStringToObject(root, "unique_id", unique_id);
     cJSON_AddStringToObject(root, "state_topic", state_topic);
     cJSON_AddStringToObject(root, "value_template", value_template);
     cJSON_AddStringToObject(root, "unit_of_measurement", unit);
