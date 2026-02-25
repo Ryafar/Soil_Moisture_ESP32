@@ -103,7 +103,7 @@ static mqtt_client_status_t publish_ha_discovery(
     const char* state_class)
 {
     char topic[160];
-    snprintf(topic, sizeof(topic), "homeassistant/sensor/%s_%s/config", device_id, entity_id);
+    snprintf(topic, sizeof(topic), "homeassistant/sensor/%s/%s/config", device_id, entity_id);
 
     cJSON* root = cJSON_CreateObject();
     if (root == NULL) {
