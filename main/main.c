@@ -34,6 +34,7 @@
 
 static const char *TAG = "MAIN";
 static bool is_first_boot = false;
+static bool battery_is_dead = false;
 
 #define MEASUREMENT_TASK_STACK_SIZE 8192
 #define MEASUREMENT_TASK_PRIORITY 5
@@ -210,95 +211,114 @@ static void measurement_task(void* pvParameters) {
         }
     }
 
+    // Check battery level
+    if (battery_voltage_mean.voltage <= BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD) {
+        ESP_LOGW(TAG, "Battery voltage (%.3f V) is below minimum threshold (%.3f V).", battery_voltage_mean.voltage, BATTERY_MONITOR_LOW_VOLTAGE_THRESHOLD);
+        
+        battery_is_dead = true;
+    }
+
     // ######################################################
     // MARK: Wait for Data to be Sent
     // ######################################################
  
+    if (battery_is_dead) {
+        ESP_LOGW(TAG, "Battery is too low. Skipping data transmission and entering deep sleep to save power.");
+    } else {
+
+
 
 #if USE_MQTT || USE_INFLUXDB
-    wifi_manager_connect();
+        wifi_manager_connect();
 
-    uint64_t timestamp_ms = 0;
+        uint64_t timestamp_ms = 0;
 
-#if NTP_ENABLED
-    // NTP time sync (optional, can be skipped if not needed for timestamps)
-    ntp_time_init(NULL);
-    ntp_time_wait_for_sync(30000);  // 30 seconds timeout
+    #if NTP_ENABLED
+        // NTP time sync (optional, can be skipped if not needed for timestamps)
+        ntp_time_init(NULL);
+        ntp_time_wait_for_sync(30000);  // 30 seconds timeout
 
-    timestamp_ms = ntp_time_get_timestamp_ms();
-#endif // NTP_ENABLED
+        timestamp_ms = ntp_time_get_timestamp_ms();
+    #endif // NTP_ENABLED
 
-#if USE_MQTT
-    mqtt_client_connect();
+    #if USE_MQTT
+        mqtt_client_connect();
 
-    if (is_first_boot) {
-        mqtt_publish_soil_sensor_homeassistant_discovery(device_id);
-    }
+        if (is_first_boot) {
+            mqtt_publish_soil_sensor_homeassistant_discovery(device_id);
+        }
 
-    mqtt_battery_data_t mqtt_bdata = {
-        .timestamp_ms = timestamp_ms,
-        .voltage = battery_voltage_mean.voltage,
-        .percentage = battery_voltage_mean.percentage,
-    };
-    strncpy(mqtt_bdata.device_id, device_id, sizeof(mqtt_bdata.device_id) - 1);
-    mqtt_publish_battery_data(&mqtt_bdata);
+        mqtt_battery_data_t mqtt_bdata = {
+            .timestamp_ms = timestamp_ms,
+            .voltage = battery_voltage_mean.voltage,
+            .percentage = battery_voltage_mean.percentage,
+        };
+        strncpy(mqtt_bdata.device_id, device_id, sizeof(mqtt_bdata.device_id) - 1);
+        mqtt_publish_battery_data(&mqtt_bdata);
 
-    mqtt_soil_data_t mqtt_sdata = {
-        .timestamp_ms = timestamp_ms,
-        .voltage = soil_reading_mean.voltage,
-        .moisture_percent = soil_reading_mean.moisture_percent,
-        .raw_adc = soil_reading_mean.raw_adc,
-    };
-    strncpy(mqtt_sdata.device_id, device_id, sizeof(mqtt_sdata.device_id) - 1);
-    mqtt_publish_soil_data(&mqtt_sdata);
+        mqtt_soil_data_t mqtt_sdata = {
+            .timestamp_ms = timestamp_ms,
+            .voltage = soil_reading_mean.voltage,
+            .moisture_percent = soil_reading_mean.moisture_percent,
+            .raw_adc = soil_reading_mean.raw_adc,
+        };
+        strncpy(mqtt_sdata.device_id, device_id, sizeof(mqtt_sdata.device_id) - 1);
+        mqtt_publish_soil_data(&mqtt_sdata);
 
-    mqtt_sdata.voltage = soil_reading_mean.voltage;
-    mqtt_sdata.moisture_percent = soil_reading_mean.moisture_percent;
-    mqtt_sdata.raw_adc = soil_reading_mean.raw_adc;
-    strncpy(mqtt_sdata.device_id, device_id, sizeof(mqtt_sdata.device_id) - 1);
-    mqtt_publish_soil_data(&mqtt_sdata);
+        mqtt_sdata.voltage = soil_reading_mean.voltage;
+        mqtt_sdata.moisture_percent = soil_reading_mean.moisture_percent;
+        mqtt_sdata.raw_adc = soil_reading_mean.raw_adc;
+        strncpy(mqtt_sdata.device_id, device_id, sizeof(mqtt_sdata.device_id) - 1);
+        mqtt_publish_soil_data(&mqtt_sdata);
 
-    mqtt_client_wait_published(5000);  // Wait up to 5 seconds for messages to be published
-    mqtt_client_disconnect();
-#endif // USE_MQTT
+        mqtt_client_wait_published(5000);  // Wait up to 5 seconds for messages to be published
+        mqtt_client_disconnect();
+    #endif // USE_MQTT
 
-#if USE_INFLUXDB
-    influxdb_battery_data_t influx_bdata = {
-        .timestamp_ns = timestamp_ms * 1000000ULL, // Convert ms to ns
-        .voltage = battery_voltage_mean.voltage,
-        .percentage = battery_voltage_mean.percentage,
-    };
-    strncpy(influx_bdata.device_id, device_id, sizeof(influx_bdata.device_id) - 1);
-    influxdb_write_battery_data(&influx_bdata);
+    #if USE_INFLUXDB
+        influxdb_battery_data_t influx_bdata = {
+            .timestamp_ns = timestamp_ms * 1000000ULL, // Convert ms to ns
+            .voltage = battery_voltage_mean.voltage,
+            .percentage = battery_voltage_mean.percentage,
+        };
+        strncpy(influx_bdata.device_id, device_id, sizeof(influx_bdata.device_id) - 1);
+        influxdb_write_battery_data(&influx_bdata);
 
-    influxdb_soil_data_t influx_sdata = {
-        .timestamp_ns = timestamp_ms * 1000000ULL, // Convert ms to ns
-        .voltage = soil_reading_mean.voltage,
-        .moisture_percent = soil_reading_mean.moisture_percent,
-        .raw_adc = soil_reading_mean.raw_adc
-    };
-    strncpy(influx_sdata.device_id, device_id, sizeof(influx_sdata.device_id) - 1);
-    influxdb_write_soil_data(&influx_sdata);
-#endif // USE_INFLUXDB
+        influxdb_soil_data_t influx_sdata = {
+            .timestamp_ns = timestamp_ms * 1000000ULL, // Convert ms to ns
+            .voltage = soil_reading_mean.voltage,
+            .moisture_percent = soil_reading_mean.moisture_percent,
+            .raw_adc = soil_reading_mean.raw_adc
+        };
+        strncpy(influx_sdata.device_id, device_id, sizeof(influx_sdata.device_id) - 1);
+        influxdb_write_soil_data(&influx_sdata);
+    #endif // USE_INFLUXDB
 
-    wifi_manager_disconnect();      
+        wifi_manager_disconnect();      
 #endif // USE_MQTT || USE_INFLUXDB
 
+
+    }
     
     // ######################################################
     // MARK: Cleanup and Deep Sleep
     // ######################################################
     
-    
+
+
     // Check if deep sleep is enabled
-    if (DEEP_SLEEP_ENABLED) {
+    if (DEEP_SLEEP_ENABLED || battery_is_dead) {
         ESP_LOGI(TAG, "Preparing for deep sleep...");
         
         // Configure timer wakeup
         uint64_t sleep_time_us = (uint64_t)DEEP_SLEEP_DURATION_SECONDS * 1000000ULL;
-        esp_sleep_enable_timer_wakeup(sleep_time_us);
+        if (battery_is_dead) {
+            ESP_LOGW(TAG, "Battery is dead. Entering deep without a wakeup timer.");
+        } else {
+         esp_sleep_enable_timer_wakeup(sleep_time_us);
         
-        ESP_LOGI(TAG, "Entering deep sleep for %d seconds...", DEEP_SLEEP_DURATION_SECONDS);
+            ESP_LOGI(TAG, "Entering deep sleep for %d seconds...", DEEP_SLEEP_DURATION_SECONDS);
+        }
         ESP_LOGI(TAG, "============================================");
         
         // Small delay before entering deep sleep
