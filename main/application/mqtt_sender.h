@@ -24,3 +24,10 @@ mqtt_client_status_t mqtt_publish_soil_data(const mqtt_soil_data_t* data);
  */
 mqtt_client_status_t mqtt_publish_battery_data(const mqtt_battery_data_t* data);
 
+/**
+ * @brief Publish Home Assistant MQTT discovery messages for the soil sensor
+ * 
+ * @param device_id Unique device identifier (e.g. derived from MAC address)
+ * @return mqtt_client_status_t Status of the operation
+ */
+mqtt_client_status_t mqtt_publish_soil_sensor_homeassistant_discovery(const char* device_id);

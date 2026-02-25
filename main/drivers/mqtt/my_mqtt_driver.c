@@ -194,7 +194,7 @@ esp_err_t mqtt_client_connect(void) {
     }
 }
 
-    esp_err_t mqtt_client_publish(const char* topic, const char* payload, size_t payload_len, int qos) {
+    esp_err_t mqtt_client_publish(const char* topic, const char* payload, size_t payload_len, int qos, int retain) {
         if (mqtt_client == NULL || !is_connected) {
             ESP_LOGE(TAG, "MQTT client not initialized or not connected");
             return ESP_ERR_INVALID_STATE;
@@ -203,7 +203,7 @@ esp_err_t mqtt_client_connect(void) {
             ESP_LOGE(TAG, "Invalid publish parameters");
             return ESP_ERR_INVALID_ARG;
         }
-        int msg_id = esp_mqtt_client_publish(mqtt_client, topic, payload, payload_len, qos, 0);
+        int msg_id = esp_mqtt_client_publish(mqtt_client, topic, payload, payload_len, qos, retain);
         if (msg_id < 0) {
             ESP_LOGE(TAG, "Failed to publish message to topic %s", topic);
             return ESP_FAIL;

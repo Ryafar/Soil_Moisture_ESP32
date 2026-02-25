@@ -7,6 +7,7 @@
 
 #include "main.h"
 #include "esp_log.h"
+#include "esp_system.h" // For esp_reset_reason()
 #include "esp_sleep.h"
 #include "application/battery_monitor.h"
 #include "drivers/csm_v2_driver/csm_v2_driver.h"
@@ -32,6 +33,7 @@
 #endif
 
 static const char *TAG = "MAIN";
+static bool is_first_boot = false;
 
 #define MEASUREMENT_TASK_STACK_SIZE 8192
 #define MEASUREMENT_TASK_PRIORITY 5
@@ -49,16 +51,27 @@ static void measurement_task(void* pvParameters) {
 
     
     // Check if this is a deep sleep wakeup
-    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-    switch (wakeup_reason) {
-        case ESP_SLEEP_WAKEUP_TIMER:
-            ESP_LOGI(TAG, "Wakeup caused by timer");
-            break;
-        case ESP_SLEEP_WAKEUP_UNDEFINED:
-        default:
-            ESP_LOGI(TAG, "First boot or reset (not a deep sleep wakeup)");
-            break;
+    esp_sleep_wakeup_cause_t wake_cause = esp_sleep_get_wakeup_cause();
+    esp_reset_reason_t reset_reason = esp_reset_reason();
+
+    if (wake_cause == ESP_SLEEP_WAKEUP_TIMER) {
+        ESP_LOGI("BOOT", "Woke up from deep sleep timer");
+    } else {
+        if (reset_reason == ESP_RST_EXT) {
+            ESP_LOGI("BOOT", "Reset button pressed"); // state not detected on lolin lite
+        } 
+        else if (reset_reason == ESP_RST_POWERON) {
+            ESP_LOGI("BOOT", "Power-on reset (likely first boot after flash)");
+        } 
+        else {
+            ESP_LOGI("BOOT", "Other reset reason: %d", reset_reason);
+        }
+
+        // Not from Deep Sleep -> send initialization message to MQTT for homeassistant
+        is_first_boot = true;
     }
+
+    printf(is_first_boot ? "First boot detected" : "Wakeup from deep sleep detected");
 
     // Generate device ID from MAC address
     char device_id[32];
@@ -217,6 +230,10 @@ static void measurement_task(void* pvParameters) {
 
 #if USE_MQTT
     mqtt_client_connect();
+
+    if (is_first_boot) {
+        mqtt_publish_soil_sensor_homeassistant_discovery(device_id);
+    }
 
     mqtt_battery_data_t mqtt_bdata = {
         .timestamp_ms = timestamp_ms,

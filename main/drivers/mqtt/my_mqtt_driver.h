@@ -112,7 +112,7 @@ bool mqtt_client_is_connected(void);
  * @param qos Quality of Service level (0, 1, or 2)
  * @return esp_err_t ESP_OK on success, error code otherwise
  */
-esp_err_t mqtt_client_publish(const char* topic, const char* payload, size_t payload_len, int qos);
+esp_err_t mqtt_client_publish(const char* topic, const char* payload, size_t payload_len, int qos, int retain);
 
 /**
  * @brief Wait for all pending publishes to complete
