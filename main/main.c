@@ -328,7 +328,7 @@ static void measurement_task(void* pvParameters) {
         esp_deep_sleep_start();
     } else {
         ESP_LOGI(TAG, "Deep sleep disabled, restarting in 5 seconds...");
-        vTaskDelay(pdMS_TO_TICKS(5000));
+        vTaskDelay(pdMS_TO_TICKS(NO_DEEP_SLEEP_RESTART_DELAY_MS));
         esp_restart();
     }
     

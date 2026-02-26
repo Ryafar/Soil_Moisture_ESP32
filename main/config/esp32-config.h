@@ -67,6 +67,7 @@
 #define DEEP_SLEEP_ENABLED              1                   // Enable/disable deep sleep mode
 #define DEEP_SLEEP_DURATION_SECONDS     (60 * 60)           // 60 minutes in seconds
 #define DEEP_SLEEP_WAKEUP_DELAY_MS      100                 // Delay before entering deep sleep
+#define NO_DEEP_SLEEP_RESTART_DELAY_MS  60 * 1000           // Delay before restart if deep sleep is disabled
 
 // ============================================================================
 // NTP Time Synchronization Configuration
