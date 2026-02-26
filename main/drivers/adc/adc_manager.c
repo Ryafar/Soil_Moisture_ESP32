@@ -22,6 +22,7 @@
 #include <string.h>
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
+#include "esp_adc_cal.h"  // Old calibration API for fallback
 
 static const char* TAG = "ADC_SHARED";
 
@@ -106,8 +107,6 @@ esp_err_t adc_shared_deinit(adc_unit_t unit) {
         if (shared_unit->channels[i].is_configured && shared_unit->channels[i].cali_handle != NULL) {
 #if ADC_CALI_SCHEME_VER_CURVE_FITTING
             adc_cali_delete_scheme_curve_fitting(shared_unit->channels[i].cali_handle);
-#elif ADC_CALI_SCHEME_VER_LINE_FITTING
-            adc_cali_delete_scheme_line_fitting(shared_unit->channels[i].cali_handle);
 #endif
             shared_unit->channels[i].cali_handle = NULL;
         }
@@ -162,8 +161,11 @@ esp_err_t adc_shared_add_channel(adc_unit_t unit, adc_channel_t channel,
     shared_unit->channels[channel].bitwidth = bitwidth;
     shared_unit->channels[channel].attenuation = attenuation;
     shared_unit->channels[channel].reference_voltage = reference_voltage;
+    shared_unit->channels[channel].use_characteristics = false;
 
-    // Create calibration scheme handle for this channel (scheme depends on the target chip)
+    // Create calibration scheme handle for this channel
+    // Only use CURVE_FITTING if available (newer chips like ESP32-C3, S3, etc.)
+    // Older chips like ESP32 (Lolin Lite) will use old characteristic API
 #if ADC_CALI_SCHEME_VER_CURVE_FITTING
     adc_cali_curve_fitting_config_t cali_config = {
         .unit_id  = unit,
@@ -172,18 +174,23 @@ esp_err_t adc_shared_add_channel(adc_unit_t unit, adc_channel_t channel,
         .bitwidth = bitwidth,
     };
     ret = adc_cali_create_scheme_curve_fitting(&cali_config, &shared_unit->channels[channel].cali_handle);
-#elif ADC_CALI_SCHEME_VER_LINE_FITTING
-    adc_cali_line_fitting_config_t cali_config = {
-        .unit_id  = unit,
-        .atten    = attenuation,
-        .bitwidth = bitwidth,
-    };
-    ret = adc_cali_create_scheme_line_fitting(&cali_config, &shared_unit->channels[channel].cali_handle);
+#else
+    ret = ESP_ERR_NOT_SUPPORTED;  // Explicitly not supported, will use old API
 #endif
+    
     if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "ADC unit %d channel %d: calibration unavailable (%s), voltage readings will be uncalibrated",
-                 unit, channel, esp_err_to_name(ret));
+        // Fallback: use old characteristic-based calibration (esp_adc_cal API)
+        ESP_LOGD(TAG, "CURVE_FITTING not available, trying old ADC calibration API...");
+        esp_adc_cal_characterize(unit, attenuation, bitwidth, (int) (reference_voltage * 1000), 
+                                 &shared_unit->channels[channel].charac);
+        shared_unit->channels[channel].use_characteristics = true;
         shared_unit->channels[channel].cali_handle = NULL;
+        ESP_LOGI(TAG, "ADC unit %d channel %d: using old characteristic-based calibration (V_ref=%.2fV)",
+                 unit, channel, reference_voltage);
+    } else {
+        shared_unit->channels[channel].cali_handle = NULL;
+        ESP_LOGI(TAG, "ADC unit %d channel %d: CURVE_FITTING calibration enabled",
+                 unit, channel);
     }
     shared_unit->channels[channel].is_configured = true;
     
@@ -250,19 +257,31 @@ esp_err_t adc_shared_read_voltage(adc_unit_t unit, adc_channel_t channel, float*
     
     adc_shared_channel_config_t* ch_config = &shared_unit->channels[channel];
 
-    // Convert raw ADC value to voltage using the new calibration API
+    // Convert raw ADC value to voltage
     int voltage_mv = 0;
+    
     if (ch_config->cali_handle != NULL) {
+        // New API: CURVE_FITTING calibration
         ret = adc_cali_raw_to_voltage(ch_config->cali_handle, raw_value, &voltage_mv);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "ADC unit %d channel %d: calibration conversion failed: %s",
                      unit, channel, esp_err_to_name(ret));
             return ret;
         }
+        ESP_LOGD(TAG, "ADC unit %d channel %d: CURVE_FITTING (raw=%d → %d mV)",
+                 unit, channel, raw_value, voltage_mv);
+    } else if (ch_config->use_characteristics) {
+        // Old API: characteristic-based calibration
+        voltage_mv = esp_adc_cal_raw_to_voltage(raw_value, &ch_config->charac);
+        ESP_LOGD(TAG, "ADC unit %d channel %d: old characteristic API (raw=%d → %d mV)",
+                 unit, channel, raw_value, voltage_mv);
     } else {
-        // Fallback: linear approximation without calibration
+        // Fallback: linear approximation using VREF
         voltage_mv = (int)((raw_value * ch_config->reference_voltage * 1000.0f) / 4095.0f);
+        ESP_LOGD(TAG, "ADC unit %d channel %d: linear fallback (raw=%d → %d mV, VREF=%.2f)",
+                 unit, channel, raw_value, voltage_mv, ch_config->reference_voltage);
     }
+    
     *voltage = ((float)voltage_mv) / 1000.0f; // voltage at ADC pin in volts
     
     ESP_LOGD(TAG, "ADC unit %d channel %d: Raw: %d, Voltage: %.3f V", unit, channel, raw_value, *voltage);

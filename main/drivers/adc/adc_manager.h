@@ -18,6 +18,11 @@
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_err.h"
 
+#if !ADC_CALI_SCHEME_VER_CURVE_FITTING
+#include "esp_adc_cal.h"  // Old calibration API for fallback (defines esp_adc_cal_characteristics_t)
+#endif
+
+
 // Maximum number of channels per ADC unit
 #define ADC_SHARED_MAX_CHANNELS 8
 
@@ -29,7 +34,9 @@ typedef struct {
     adc_bitwidth_t bitwidth;            ///< ADC resolution
     adc_atten_t attenuation;            ///< ADC attenuation
     float reference_voltage;            ///< Reference voltage for calculations
-    adc_cali_handle_t cali_handle;      ///< ADC calibration handle
+    adc_cali_handle_t cali_handle;      ///< ADC calibration handle (new API)
+    esp_adc_cal_characteristics_t charac; ///< ADC characteristics (old API, for fallback)
+    bool use_characteristics;           ///< Whether to use characteristics (old API)
     bool is_configured;                 ///< Channel configuration status
 } adc_shared_channel_config_t;
 
