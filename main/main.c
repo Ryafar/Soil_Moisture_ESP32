@@ -35,6 +35,7 @@
 static const char *TAG = "MAIN";
 static bool is_first_boot = false;
 static bool battery_is_dead = false;
+static int wifi_current_channel = WIFI_DEFAULT_CHANNEL;
 
 #define MEASUREMENT_TASK_STACK_SIZE 8192
 #define MEASUREMENT_TASK_PRIORITY 5

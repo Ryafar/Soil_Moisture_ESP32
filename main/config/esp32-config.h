@@ -12,6 +12,10 @@
 #include "esp_adc/adc_oneshot.h"
 #include "credentials.h"
 
+#define WIFI_DEFAULT_CHANNEL    11
+#define NVS_NAMESPACE                "soil_sensor"
+#define NVS_KEY_WIFI_CURRENT_CHANNEL "wifi_current_channel"
+
 // GPIO Pin Assignments
 #define LED_GPIO_NUM           GPIO_NUM_22
 
