@@ -14,8 +14,9 @@
 #include "adc_manager.h"
 
 #include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 #include "esp_err.h"
-#include "esp_adc_cal.h"
 
 // Maximum number of channels per ADC unit
 #define ADC_SHARED_MAX_CHANNELS 8
@@ -28,7 +29,7 @@ typedef struct {
     adc_bitwidth_t bitwidth;            ///< ADC resolution
     adc_atten_t attenuation;            ///< ADC attenuation
     float reference_voltage;            ///< Reference voltage for calculations
-    esp_adc_cal_characteristics_t charac; ///< ADC calibration characteristics
+    adc_cali_handle_t cali_handle;      ///< ADC calibration handle
     bool is_configured;                 ///< Channel configuration status
 } adc_shared_channel_config_t;
 

@@ -13,7 +13,8 @@
 #include "esp_log.h"
 #include "soc/soc_caps.h"
 #include <string.h>
-#include "esp_adc_cal.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 
 static const char* TAG = "ADC_SHARED";
 
@@ -93,6 +94,14 @@ esp_err_t adc_shared_deinit(adc_unit_t unit) {
         return ESP_OK;  // Still in use by other modules
     }
     
+    // Delete any remaining calibration handles before deleting the unit
+    for (int i = 0; i < ADC_SHARED_MAX_CHANNELS; i++) {
+        if (shared_unit->channels[i].is_configured && shared_unit->channels[i].cali_handle != NULL) {
+            adc_cali_delete_scheme_line_fitting(shared_unit->channels[i].cali_handle);
+            shared_unit->channels[i].cali_handle = NULL;
+        }
+    }
+
     // Actually deinitialize when ref count reaches 0
     esp_err_t ret = adc_oneshot_del_unit(shared_unit->handle);
     if (ret != ESP_OK) {
@@ -142,8 +151,19 @@ esp_err_t adc_shared_add_channel(adc_unit_t unit, adc_channel_t channel,
     shared_unit->channels[channel].bitwidth = bitwidth;
     shared_unit->channels[channel].attenuation = attenuation;
     shared_unit->channels[channel].reference_voltage = reference_voltage;
-    // Characterize ADC for this channel (default_vref = 1100 mV, esp_adc_cal will read efuse if available)
-    esp_adc_cal_characterize(unit, attenuation, bitwidth, 1100, &shared_unit->channels[channel].charac);
+
+    // Create calibration scheme handle for this channel
+    adc_cali_line_fitting_config_t cali_config = {
+        .unit_id   = unit,
+        .atten     = attenuation,
+        .bitwidth  = bitwidth,
+    };
+    ret = adc_cali_create_scheme_line_fitting(&cali_config, &shared_unit->channels[channel].cali_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "ADC unit %d channel %d: calibration unavailable (%s), voltage readings will be uncalibrated",
+                 unit, channel, esp_err_to_name(ret));
+        shared_unit->channels[channel].cali_handle = NULL;
+    }
     shared_unit->channels[channel].is_configured = true;
     
     ESP_LOGI(TAG, "ADC channel %d configured on unit %d successfully", channel, unit);
@@ -208,9 +228,20 @@ esp_err_t adc_shared_read_voltage(adc_unit_t unit, adc_channel_t channel, float*
     }
     
     adc_shared_channel_config_t* ch_config = &shared_unit->channels[channel];
-    
-    // Convert raw ADC value to voltage using esp_adc_cal for proper calibration
-    uint32_t voltage_mv = esp_adc_cal_raw_to_voltage((uint32_t)raw_value, &ch_config->charac);
+
+    // Convert raw ADC value to voltage using the new calibration API
+    int voltage_mv = 0;
+    if (ch_config->cali_handle != NULL) {
+        ret = adc_cali_raw_to_voltage(ch_config->cali_handle, raw_value, &voltage_mv);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "ADC unit %d channel %d: calibration conversion failed: %s",
+                     unit, channel, esp_err_to_name(ret));
+            return ret;
+        }
+    } else {
+        // Fallback: linear approximation without calibration
+        voltage_mv = (int)((raw_value * ch_config->reference_voltage * 1000.0f) / 4095.0f);
+    }
     *voltage = ((float)voltage_mv) / 1000.0f; // voltage at ADC pin in volts
     
     ESP_LOGD(TAG, "ADC unit %d channel %d: Raw: %d, Voltage: %.3f V", unit, channel, raw_value, *voltage);
@@ -229,6 +260,11 @@ esp_err_t adc_shared_remove_channel(adc_unit_t unit, adc_channel_t channel) {
         return ESP_ERR_INVALID_ARG;
     }
     
+    // Delete calibration handle if it exists
+    if (shared_unit->channels[channel].cali_handle != NULL) {
+        adc_cali_delete_scheme_line_fitting(shared_unit->channels[channel].cali_handle);
+        shared_unit->channels[channel].cali_handle = NULL;
+    }
     shared_unit->channels[channel].is_configured = false;
     ESP_LOGI(TAG, "ADC channel %d removed from unit %d", channel, unit);
     return ESP_OK;
