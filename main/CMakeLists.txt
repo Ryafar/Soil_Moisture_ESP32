@@ -8,10 +8,13 @@ idf_component_register(SRCS "main.c"
                             "application/battery_monitor.c"
                             "application/influxdb_sender.c"
                             "application/mqtt_sender.c"
+                            "application/espnow_sender.c"
                             "drivers/csm_v2_driver/csm_v2_driver.c"
                             "drivers/wifi/wifi_manager.c"
                             "drivers/influxdb/influxdb_client.c"
                             "drivers/mqtt/my_mqtt_driver.c"
+                            "drivers/espnow/espnow.c"
+                            "drivers/nvs/nvs.c"
                             "utils/esp_utils.c"
                             "utils/ntp_time.c"
                             "drivers/led/led.c"
@@ -22,6 +25,15 @@ idf_component_register(SRCS "main.c"
 #######################
 #   TESTING           #
 #######################
+
+# To test the HUB
+# idf_component_register(SRCS "01_testing/hub_main.c"
+#                                "application/espnow_sender.c"
+#                                "drivers/espnow/espnow.c"
+#                                "drivers/nvs/nvs.c"
+#                                "utils/esp_utils.c"
+#                          INCLUDE_DIRS "."
+#                          REQUIRES driver esp_adc esp_wifi esp_netif nvs_flash esp_event esp_http_client esp-tls json esp_timer lwip)
 
 # For testing wifi connection
 # idf_component_register(SRCS "01_testing/wifi_connection_main.c"

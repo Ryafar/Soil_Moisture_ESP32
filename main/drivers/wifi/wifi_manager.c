@@ -243,3 +243,14 @@ static void update_status(wifi_status_t new_status, const char* ip_addr)
         }
     }
 }
+
+esp_err_t wifi_manager_get_channel(uint8_t* primary, wifi_second_chan_t* second)
+{
+    esp_err_t ret = esp_wifi_get_channel(primary, second);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Current WiFi channel: %d", *primary);
+    } else {
+        ESP_LOGE(TAG, "Failed to get WiFi channel: %s", esp_err_to_name(ret));
+    }
+    return ret;
+}

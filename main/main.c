@@ -12,6 +12,7 @@
 #include "application/battery_monitor.h"
 #include "drivers/csm_v2_driver/csm_v2_driver.h"
 #include "drivers/wifi/wifi_manager.h"
+#include "drivers/nvs/nvs.h"
 #include "utils/esp_utils.h"
 #include "utils/ntp_time.h"
 #include "esp_mac.h"
@@ -22,23 +23,47 @@
 #include "esp_timer.h"
 #include <string.h>
 
+#if USE_ESPNOW
+#include "application/espnow_sender.h"
+#endif // USE_ESPNOW
+
 #if USE_MQTT
 #include "drivers/mqtt/my_mqtt_driver.h"
 #include "application/mqtt_sender.h"
-#endif
+#endif // USE_MQTT
 
 #if USE_INFLUXDB
 #include "drivers/influxdb/influxdb_client.h"
 #include "application/influxdb_sender.h"
-#endif
+#endif // USE_INFLUXDB
+
+typedef struct {
+    char device_id[32];
+    uint8_t espnow_hub_mac[6];
+    uint8_t wifi_current_channel;
+} app_config_t;
+
+
+
+
 
 static const char *TAG = "MAIN";
 static bool is_first_boot = false;
 static bool battery_is_dead = false;
-static int wifi_current_channel = WIFI_DEFAULT_CHANNEL;
 
 #define MEASUREMENT_TASK_STACK_SIZE 8192
-#define MEASUREMENT_TASK_PRIORITY 5
+#define MEASUREMENT_TASK_PRIORITY   5
+#define USE_WIFI                    (USE_MQTT || USE_INFLUXDB) // WiFi is needed if either MQTT or InfluxDB is used
+
+
+// Static initial application configuration (is loaded/saved from NVS)
+static app_config_t app_config = {
+    .device_id = {0},
+    .espnow_hub_mac = ESPNOW_DEFAULT_BROADCAST_ADDRESS, // Default to broadcast (discovery mode)
+    .wifi_current_channel = WIFI_DEFAULT_CHANNEL
+};
+
+
 
 
 // MARK: Measurement Task
@@ -51,7 +76,13 @@ static void measurement_task(void* pvParameters) {
     ESP_LOGI(TAG, "=== Soil Moisture Sensor with Deep Sleep ===");
     ESP_LOGI(TAG, "ESP-IDF Version: %s", esp_get_idf_version());
 
+
+
     
+    // #######################################################
+    // MARK: Wakeup
+    // #######################################################
+
     // Check if this is a deep sleep wakeup
     esp_sleep_wakeup_cause_t wake_cause = esp_sleep_get_wakeup_cause();
     esp_reset_reason_t reset_reason = esp_reset_reason();
@@ -75,12 +106,19 @@ static void measurement_task(void* pvParameters) {
 
     printf(is_first_boot ? "First boot detected" : "Wakeup from deep sleep detected");
 
-    // Generate device ID from MAC address
-    char device_id[32];
-    uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    snprintf(device_id, sizeof(device_id), "ESP32C3_%02X%02X%02X%02X%02X%02X",
-             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    if (is_first_boot) {
+        ESP_LOGI(TAG, "Performing first boot initialization...");
+
+        // Generate device ID from MAC address
+        char device_id[32] = {0};
+        generate_device_id_from_wifi_mac(device_id, sizeof(device_id), DEVICE_ID_PREFIX);
+        strncpy(app_config.device_id, device_id, sizeof(app_config.device_id) - 1);
+        ESP_LOGI(TAG, "Generated Device ID: %s", app_config.device_id);
+
+    } else {
+        ESP_LOGI(TAG, "Performing wakeup initialization...");
+    }
+    
 
 
     
@@ -88,6 +126,21 @@ static void measurement_task(void* pvParameters) {
     // MARK: Initialize
     // ######################################################
     
+    // Initialize NVS and load config (or save initial config on first boot)
+    ESP_LOGI(TAG, "Initializing NVS...");
+    nvs_driver_init();
+    if (is_first_boot) {
+        // Save initial config to NVS on first boot
+        nvs_driver_save(NVS_NAMESPACE, NVS_KEY_APP_CONFIG, &app_config, sizeof(app_config));
+    } else {
+        // Load config from NVS on wakeup
+        nvs_driver_load(NVS_NAMESPACE, NVS_KEY_APP_CONFIG, &app_config, sizeof(app_config));
+        ESP_LOGI(TAG, "Loaded config from NVS:");
+        ESP_LOGI(TAG, "    Device ID: %s", app_config.device_id);
+        ESP_LOGI(TAG, "    Hub MAC: " MACSTR, MAC2STR(app_config.espnow_hub_mac));
+        ESP_LOGI(TAG, "    Current WiFi Channel: %d", app_config.wifi_current_channel);
+    }
+
     // Soil sensor configuration
     csm_v2_config_t csm_config = {
         .adc_unit = SOIL_ADC_UNIT,
@@ -105,8 +158,8 @@ static void measurement_task(void* pvParameters) {
     battery_monitor_init();
 
 
-#if USE_MQTT || USE_INFLUXDB
     // Initialize WiFi 
+#if USE_WIFI
     ESP_LOGI(TAG, "Initializing WiFi...");
     wifi_manager_config_t wifi_config = {
         .ssid = WIFI_SSID,
@@ -114,10 +167,30 @@ static void measurement_task(void* pvParameters) {
         .max_retry = WIFI_MAX_RETRY,
     };
     wifi_manager_init(&wifi_config, NULL);
+#endif // USE_WIFI
+
+    // Initialize ESP-NOW
+#if USE_ESPNOW
+    espnow_sender_config_t espnow_config = {
+        .hub_mac = {0},
+        .start_channel = app_config.wifi_current_channel,
+        .max_retries = 3,
+        .retry_delay_ms = 200,
+        .ack_timeout_ms = 500
+    };
+    strncpy((char*)espnow_config.hub_mac, (char*)app_config.espnow_hub_mac, 6);
+
+    if (USE_WIFI) {
+        espnow_sender_init_on_existing_wifi(&espnow_config, app_config.wifi_current_channel);
+    } else {
+        // If WiFi is not used, initialize ESP-NOW sender which also initializes WiFi in STA mode
+        espnow_sender_init(&espnow_config, app_config.wifi_current_channel, 0);
+    }
+#endif // USE_ESPNOW
 
 
-#if USE_MQTT
     // Initialize MQTT client
+#if USE_MQTT
     mqtt_client_config_t mqtt_config = {
         .broker_uri = MQTT_BROKER_URI,
         .username = MQTT_USERNAME,
@@ -145,8 +218,6 @@ static void measurement_task(void* pvParameters) {
     };
     influxdb_client_init(&influxdb_config);
 #endif // USE_INFLUXDB
-
-#endif // USE_MQTT || USE_INFLUXDB
 
 
 
@@ -227,12 +298,10 @@ static void measurement_task(void* pvParameters) {
         ESP_LOGW(TAG, "Battery is too low. Skipping data transmission and entering deep sleep to save power.");
     } else {
 
-
-
-#if USE_MQTT || USE_INFLUXDB
-        wifi_manager_connect();
-
         uint64_t timestamp_ms = 0;
+
+#if USE_WIFI
+        wifi_manager_connect();
 
     #if NTP_ENABLED
         // NTP time sync (optional, can be skipped if not needed for timestamps)
@@ -241,12 +310,65 @@ static void measurement_task(void* pvParameters) {
 
         timestamp_ms = ntp_time_get_timestamp_ms();
     #endif // NTP_ENABLED
+#endif // USE_WIFI
 
-    #if USE_MQTT
+        // Send data via ESP-NOW
+#if USE_ESPNOW
+        espnow_sensor_data_t espnow_data;
+        espnow_sender_build_packet(&espnow_data,
+            app_config.device_id,
+            ntp_time_get_timestamp_ms(),
+            soil_reading_mean.voltage,
+            soil_reading_mean.moisture_percent,
+            soil_reading_mean.raw_adc,
+            battery_voltage_mean.voltage,
+            battery_voltage_mean.percentage);
+
+        // Check if hub MAC is known (discovery mode if all 0xFF)
+        bool is_discovery_mode = (app_config.espnow_hub_mac[0] == 0xff && 
+                                 app_config.espnow_hub_mac[1] == 0xff &&
+                                 app_config.espnow_hub_mac[2] == 0xff &&
+                                 app_config.espnow_hub_mac[3] == 0xff &&
+                                 app_config.espnow_hub_mac[4] == 0xff &&
+                                 app_config.espnow_hub_mac[5] == 0xff);
+
+        uint8_t ack_responder_mac[6] = {0};
+        uint8_t wifi_current_saved_channel = app_config.wifi_current_channel;
+        espnow_sender_status_t send_status = espnow_sender_send_data(&espnow_data, 
+                                                                     &app_config.wifi_current_channel,
+                                                                     ack_responder_mac);
+        if (send_status == ESPNOW_SENDER_OK) {
+            // In discovery mode, save the hub's MAC (check if valid - not all zeros)
+            if (is_discovery_mode) {
+                bool mac_valid = (ack_responder_mac[0] != 0 || ack_responder_mac[1] != 0 ||
+                                 ack_responder_mac[2] != 0 || ack_responder_mac[3] != 0 ||
+                                 ack_responder_mac[4] != 0 || ack_responder_mac[5] != 0);
+                if (mac_valid) {
+                    memcpy(app_config.espnow_hub_mac, ack_responder_mac, 6);
+                    ESP_LOGI(TAG, "Hub discovered: " MACSTR, MAC2STR(ack_responder_mac));
+                }
+            }
+            
+            // Update config if channel changed and save to NVS
+            if (wifi_current_saved_channel != app_config.wifi_current_channel) {
+                nvs_driver_save(NVS_NAMESPACE, NVS_KEY_APP_CONFIG, &app_config, sizeof(app_config));
+                ESP_LOGI(TAG, "Saved new channel %d to NVS", app_config.wifi_current_channel);
+            } else if (is_discovery_mode) {
+                // Save config if hub was discovered (even if channel didn't change)
+                nvs_driver_save(NVS_NAMESPACE, NVS_KEY_APP_CONFIG, &app_config, sizeof(app_config));
+                ESP_LOGI(TAG, "Saved hub MAC to NVS");
+            }
+            ESP_LOGI(TAG, "Data sent successfully via ESP-NOW on channel %d. ACK received.", wifi_current_saved_channel);
+        } else {
+            ESP_LOGE(TAG, "Failed to send data via ESP-NOW: %d", send_status);
+        }
+#endif // USE_ESPNOW
+
+#if USE_MQTT
         mqtt_client_connect();
 
         if (is_first_boot) {
-            mqtt_publish_soil_sensor_homeassistant_discovery(device_id);
+            mqtt_publish_soil_sensor_homeassistant_discovery(app_config.device_id);
         }
 
         mqtt_battery_data_t mqtt_bdata = {
@@ -254,7 +376,7 @@ static void measurement_task(void* pvParameters) {
             .voltage = battery_voltage_mean.voltage,
             .percentage = battery_voltage_mean.percentage,
         };
-        strncpy(mqtt_bdata.device_id, device_id, sizeof(mqtt_bdata.device_id) - 1);
+        strncpy(mqtt_bdata.device_id, app_config.device_id, sizeof(mqtt_bdata.device_id) - 1);
         mqtt_publish_battery_data(&mqtt_bdata);
 
         mqtt_soil_data_t mqtt_sdata = {
@@ -263,26 +385,26 @@ static void measurement_task(void* pvParameters) {
             .moisture_percent = soil_reading_mean.moisture_percent,
             .raw_adc = soil_reading_mean.raw_adc,
         };
-        strncpy(mqtt_sdata.device_id, device_id, sizeof(mqtt_sdata.device_id) - 1);
+        strncpy(mqtt_sdata.device_id, app_config.device_id, sizeof(mqtt_sdata.device_id) - 1);
         mqtt_publish_soil_data(&mqtt_sdata);
 
         mqtt_sdata.voltage = soil_reading_mean.voltage;
         mqtt_sdata.moisture_percent = soil_reading_mean.moisture_percent;
         mqtt_sdata.raw_adc = soil_reading_mean.raw_adc;
-        strncpy(mqtt_sdata.device_id, device_id, sizeof(mqtt_sdata.device_id) - 1);
+        strncpy(mqtt_sdata.device_id, app_config.device_id, sizeof(mqtt_sdata.device_id) - 1);
         mqtt_publish_soil_data(&mqtt_sdata);
 
         mqtt_client_wait_published(5000);  // Wait up to 5 seconds for messages to be published
         mqtt_client_disconnect();
-    #endif // USE_MQTT
+#endif // USE_MQTT
 
-    #if USE_INFLUXDB
+#if USE_INFLUXDB
         influxdb_battery_data_t influx_bdata = {
             .timestamp_ns = timestamp_ms * 1000000ULL, // Convert ms to ns
             .voltage = battery_voltage_mean.voltage,
             .percentage = battery_voltage_mean.percentage,
         };
-        strncpy(influx_bdata.device_id, device_id, sizeof(influx_bdata.device_id) - 1);
+        strncpy(influx_bdata.device_id, app_config.device_id, sizeof(influx_bdata.device_id) - 1);
         influxdb_write_battery_data(&influx_bdata);
 
         influxdb_soil_data_t influx_sdata = {
@@ -291,16 +413,20 @@ static void measurement_task(void* pvParameters) {
             .moisture_percent = soil_reading_mean.moisture_percent,
             .raw_adc = soil_reading_mean.raw_adc
         };
-        strncpy(influx_sdata.device_id, device_id, sizeof(influx_sdata.device_id) - 1);
+        strncpy(influx_sdata.device_id, app_config.device_id, sizeof(influx_sdata.device_id) - 1);
         influxdb_write_soil_data(&influx_sdata);
-    #endif // USE_INFLUXDB
+#endif // USE_INFLUXDB
 
+#if USE_WIFI
         wifi_manager_disconnect();      
-#endif // USE_MQTT || USE_INFLUXDB
+#endif // USE_WIFI
 
 
-    }
+    } // end if batter_is_dead
     
+
+
+
     // ######################################################
     // MARK: Cleanup and Deep Sleep
     // ######################################################
