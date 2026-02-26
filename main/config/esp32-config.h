@@ -21,7 +21,7 @@
 // GPIO Pin Assignments
 #define LED_GPIO_NUM           GPIO_NUM_22
 
-#define USE_ESPNOW             1                   // Enable ESP-NOW data transmission to hub
+#define USE_ESPNOW             0                   // Enable ESP-NOW data transmission to hub
 #define ESPNOW_DEFAULT_BROADCAST_ADDRESS {0xff, 0xff, 0xff, 0xff, 0xff, 0xff} // Broadcast address for discovery mode
 
 // ============================================================================

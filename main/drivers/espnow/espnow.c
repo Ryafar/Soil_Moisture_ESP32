@@ -57,17 +57,7 @@ static void espnow_recv_cb(const esp_now_recv_info_t *recv_info, const uint8_t *
 
 esp_err_t espnow_init(void)
 {
-
-    // init wifi for esp-now (must be done before esp_now_init)
-    esp_netif_init();
-    esp_event_loop_create_default();
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    esp_wifi_init(&cfg);
-    esp_wifi_set_mode(WIFI_MODE_STA);
-    esp_wifi_start();
-    esp_wifi_set_channel(s_current_channel, WIFI_SECOND_CHAN_NONE);
-
+    // Initialize ESP-NOW (WiFi must already be initialized)
     esp_err_t err = esp_now_init();
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "ESP-NOW init failed: %s", esp_err_to_name(err));

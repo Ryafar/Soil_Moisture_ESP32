@@ -298,7 +298,6 @@ static void measurement_task(void* pvParameters) {
         ESP_LOGW(TAG, "Battery is too low. Skipping data transmission and entering deep sleep to save power.");
     } else {
 
-        uint64_t timestamp_ms = 0;
 
 #if USE_WIFI
         wifi_manager_connect();
@@ -307,58 +306,50 @@ static void measurement_task(void* pvParameters) {
         // NTP time sync (optional, can be skipped if not needed for timestamps)
         ntp_time_init(NULL);
         ntp_time_wait_for_sync(30000);  // 30 seconds timeout
-
-        timestamp_ms = ntp_time_get_timestamp_ms();
     #endif // NTP_ENABLED
 #endif // USE_WIFI
+
+        // Get current timestamp, if NTP not synced, returns 0
+        uint64_t timestamp_ms = ntp_time_get_timestamp_ms();
 
         // Send data via ESP-NOW
 #if USE_ESPNOW
         espnow_sensor_data_t espnow_data;
         espnow_sender_build_packet(&espnow_data,
             app_config.device_id,
-            ntp_time_get_timestamp_ms(),
+            timestamp_ms,
             soil_reading_mean.voltage,
             soil_reading_mean.moisture_percent,
             soil_reading_mean.raw_adc,
             battery_voltage_mean.voltage,
             battery_voltage_mean.percentage);
 
-        // Check if hub MAC is known (discovery mode if all 0xFF)
-        bool is_discovery_mode = (app_config.espnow_hub_mac[0] == 0xff && 
-                                 app_config.espnow_hub_mac[1] == 0xff &&
-                                 app_config.espnow_hub_mac[2] == 0xff &&
-                                 app_config.espnow_hub_mac[3] == 0xff &&
-                                 app_config.espnow_hub_mac[4] == 0xff &&
-                                 app_config.espnow_hub_mac[5] == 0xff);
+        // Check if in discovery mode (hub MAC is broadcast address)
+        bool is_discovery_mode = espnow_sender_is_broadcast_mac(app_config.espnow_hub_mac);
 
         uint8_t ack_responder_mac[6] = {0};
-        uint8_t wifi_current_saved_channel = app_config.wifi_current_channel;
+        uint8_t previous_channel = app_config.wifi_current_channel;
+        
         espnow_sender_status_t send_status = espnow_sender_send_data(&espnow_data, 
                                                                      &app_config.wifi_current_channel,
                                                                      ack_responder_mac);
+        
         if (send_status == ESPNOW_SENDER_OK) {
-            // In discovery mode, save the hub's MAC (check if valid - not all zeros)
-            if (is_discovery_mode) {
-                bool mac_valid = (ack_responder_mac[0] != 0 || ack_responder_mac[1] != 0 ||
-                                 ack_responder_mac[2] != 0 || ack_responder_mac[3] != 0 ||
-                                 ack_responder_mac[4] != 0 || ack_responder_mac[5] != 0);
-                if (mac_valid) {
-                    memcpy(app_config.espnow_hub_mac, ack_responder_mac, 6);
-                    ESP_LOGI(TAG, "Hub discovered: " MACSTR, MAC2STR(ack_responder_mac));
-                }
+            ESP_LOGI(TAG, "Data sent successfully via ESP-NOW on channel %d", 
+                    app_config.wifi_current_channel);
+            
+            // In discovery mode, save the discovered hub MAC (if valid)
+            if (is_discovery_mode && espnow_sender_is_mac_valid(ack_responder_mac)) {
+                memcpy(app_config.espnow_hub_mac, ack_responder_mac, 6);
+                ESP_LOGI(TAG, "Hub discovered: " MACSTR, MAC2STR(ack_responder_mac));
             }
             
-            // Update config if channel changed and save to NVS
-            if (wifi_current_saved_channel != app_config.wifi_current_channel) {
+            // Save config if channel changed OR hub was discovered
+            if (previous_channel != app_config.wifi_current_channel || is_discovery_mode) {
                 nvs_driver_save(NVS_NAMESPACE, NVS_KEY_APP_CONFIG, &app_config, sizeof(app_config));
-                ESP_LOGI(TAG, "Saved new channel %d to NVS", app_config.wifi_current_channel);
-            } else if (is_discovery_mode) {
-                // Save config if hub was discovered (even if channel didn't change)
-                nvs_driver_save(NVS_NAMESPACE, NVS_KEY_APP_CONFIG, &app_config, sizeof(app_config));
-                ESP_LOGI(TAG, "Saved hub MAC to NVS");
+                ESP_LOGI(TAG, "Config saved to NVS (channel=%d, hub=" MACSTR ")", 
+                        app_config.wifi_current_channel, MAC2STR(app_config.espnow_hub_mac));
             }
-            ESP_LOGI(TAG, "Data sent successfully via ESP-NOW on channel %d. ACK received.", wifi_current_saved_channel);
         } else {
             ESP_LOGE(TAG, "Failed to send data via ESP-NOW: %d", send_status);
         }

@@ -140,4 +140,22 @@ void espnow_sender_build_packet(espnow_sensor_data_t *packet,
                                 float battery_voltage,
                                 float battery_percentage);
 
+/**
+ * @brief Check if MAC address is broadcast (discovery mode)
+ * 
+ * Checks if the MAC is 0xFF:FF:FF:FF:FF:FF, indicating discovery/broadcast mode.
+ * 
+ * @param mac MAC address (6 bytes)
+ * @return true if broadcast MAC, false otherwise
+ */
+bool espnow_sender_is_broadcast_mac(const uint8_t *mac);
+
+/**
+ * @brief Check if MAC address is valid (not all zeros)
+ * 
+ * @param mac MAC address (6 bytes)
+ * @return true if valid, false if all zeros
+ */
+bool espnow_sender_is_mac_valid(const uint8_t *mac);
+
 #endif // ESPNOW_SENDER_H
