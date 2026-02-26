@@ -12,8 +12,17 @@
 #include "esp_adc/adc_oneshot.h"
 #include "credentials.h"
 
+#define DEVICE_ID_PREFIX           "ESP32"            // Prefix for device ID generated from MAC address
+
+#define WIFI_DEFAULT_CHANNEL    11
+#define NVS_NAMESPACE                "soil_sensor"
+#define NVS_KEY_APP_CONFIG           "app_config"
+
 // GPIO Pin Assignments
 #define LED_GPIO_NUM           GPIO_NUM_22
+
+#define USE_ESPNOW             0                   // Enable ESP-NOW data transmission to hub
+#define ESPNOW_DEFAULT_BROADCAST_ADDRESS {0xff, 0xff, 0xff, 0xff, 0xff, 0xff} // Broadcast address for discovery mode
 
 // ============================================================================
 // ADC Configuration
@@ -65,7 +74,7 @@
 // ============================================================================
 
 #define DEEP_SLEEP_ENABLED              1                   // Enable/disable deep sleep mode
-#define DEEP_SLEEP_DURATION_SECONDS     (60 * 60)           // 60 minutes in seconds
+#define DEEP_SLEEP_DURATION_SECONDS     (20)           // 60 minutes in seconds
 #define DEEP_SLEEP_WAKEUP_DELAY_MS      100                 // Delay before entering deep sleep
 #define NO_DEEP_SLEEP_RESTART_DELAY_MS  60 * 1000           // Delay before restart if deep sleep is disabled
 

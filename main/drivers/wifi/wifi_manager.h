@@ -101,4 +101,13 @@ bool wifi_manager_is_connected(void);
  */
 esp_err_t wifi_manager_get_ip(char* ip_str);
 
+/**
+ * @brief Get current WiFi channel
+ * 
+ * @param primary Pointer to store primary channel
+ * @param second Pointer to store secondary channel (if applicable)
+ * @return esp_err_t ESP_OK on success, error code otherwise
+ */
+esp_err_t wifi_manager_get_channel(uint8_t* primary, wifi_second_chan_t* second);
+
 #endif // WIFI_MANAGER_H
