@@ -6,6 +6,13 @@
  * modules to use the same ADC unit and channels efficiently. It uses reference
  * counting to manage the ADC unit lifecycle and provides channel-specific
  * configuration management.
+ * 
+ * ADC_CALI_SCHEME_VER_CURVE_FITTING and ADC_CALI_SCHEME_VER_LINE_FITTING are
+ * defined by the ESP-IDF based on the target chip's capabilities. They do not
+ * have to be defined manually.
+ * 
+ * ADC_CALI_SCHEME_VER_CURVE_FITTING: Used by the newer chips: ESP32-C3, C6, S3, H2, ...
+ * ADC_CALI_SCHEME_VER_LINE_FITTING: Used by older chips: e.g. ESP32 Lolin Lite, ...
  */
 
 #include "adc_manager.h"
@@ -97,7 +104,11 @@ esp_err_t adc_shared_deinit(adc_unit_t unit) {
     // Delete any remaining calibration handles before deleting the unit
     for (int i = 0; i < ADC_SHARED_MAX_CHANNELS; i++) {
         if (shared_unit->channels[i].is_configured && shared_unit->channels[i].cali_handle != NULL) {
+#if ADC_CALI_SCHEME_VER_CURVE_FITTING
+            adc_cali_delete_scheme_curve_fitting(shared_unit->channels[i].cali_handle);
+#elif ADC_CALI_SCHEME_VER_LINE_FITTING
             adc_cali_delete_scheme_line_fitting(shared_unit->channels[i].cali_handle);
+#endif
             shared_unit->channels[i].cali_handle = NULL;
         }
     }
@@ -152,13 +163,23 @@ esp_err_t adc_shared_add_channel(adc_unit_t unit, adc_channel_t channel,
     shared_unit->channels[channel].attenuation = attenuation;
     shared_unit->channels[channel].reference_voltage = reference_voltage;
 
-    // Create calibration scheme handle for this channel
+    // Create calibration scheme handle for this channel (scheme depends on the target chip)
+#if ADC_CALI_SCHEME_VER_CURVE_FITTING
+    adc_cali_curve_fitting_config_t cali_config = {
+        .unit_id  = unit,
+        .chan     = channel,
+        .atten    = attenuation,
+        .bitwidth = bitwidth,
+    };
+    ret = adc_cali_create_scheme_curve_fitting(&cali_config, &shared_unit->channels[channel].cali_handle);
+#elif ADC_CALI_SCHEME_VER_LINE_FITTING
     adc_cali_line_fitting_config_t cali_config = {
-        .unit_id   = unit,
-        .atten     = attenuation,
-        .bitwidth  = bitwidth,
+        .unit_id  = unit,
+        .atten    = attenuation,
+        .bitwidth = bitwidth,
     };
     ret = adc_cali_create_scheme_line_fitting(&cali_config, &shared_unit->channels[channel].cali_handle);
+#endif
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "ADC unit %d channel %d: calibration unavailable (%s), voltage readings will be uncalibrated",
                  unit, channel, esp_err_to_name(ret));
@@ -262,7 +283,11 @@ esp_err_t adc_shared_remove_channel(adc_unit_t unit, adc_channel_t channel) {
     
     // Delete calibration handle if it exists
     if (shared_unit->channels[channel].cali_handle != NULL) {
+#if ADC_CALI_SCHEME_VER_CURVE_FITTING
+        adc_cali_delete_scheme_curve_fitting(shared_unit->channels[channel].cali_handle);
+#elif ADC_CALI_SCHEME_VER_LINE_FITTING
         adc_cali_delete_scheme_line_fitting(shared_unit->channels[channel].cali_handle);
+#endif
         shared_unit->channels[channel].cali_handle = NULL;
     }
     shared_unit->channels[channel].is_configured = false;
